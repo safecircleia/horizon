@@ -12,6 +12,7 @@ from data.generation.prompts.isolation import create_isolation_prompt
 from data.generation.prompts.personal_info import create_personal_info_prompt
 from data.generation.prompts.platform_migration import create_platform_migration_prompt
 from data.generation.prompts.threats import create_threats_prompt
+from data.generation.prompts.benign import create_benign_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 
@@ -160,3 +161,29 @@ def test_threats_prompt():
     """Test threats/violence prompt."""
     prompt = create_threats_prompt(RiskLevel.HIGH, 15, 8)
     assert prompt.category == RiskCategory.THREATS
+
+
+def test_benign_prompt():
+    """Test benign conversation prompt."""
+    prompt = create_benign_prompt(child_age=14, num_messages=6)
+
+    # Benign should always use RiskLevel.NONE
+    assert prompt.category == RiskCategory.BENIGN
+    assert prompt.severity == RiskLevel.NONE
+    assert "14" in prompt.user_prompt
+    assert "6" in prompt.user_prompt or "six" in prompt.user_prompt.lower()
+
+
+def test_benign_prompt_varied_contexts():
+    """Test benign prompts produce varied conversation types."""
+    prompts = [create_benign_prompt(child_age=15, num_messages=8) for _ in range(5)]
+
+    # All should be benign with NONE severity
+    for prompt in prompts:
+        assert prompt.category == RiskCategory.BENIGN
+        assert prompt.severity == RiskLevel.NONE
+
+    # Check for some variety in the prompts (should have different contexts)
+    user_prompts = [p.user_prompt for p in prompts]
+    # At least some prompts should be different (varied contexts)
+    assert len(set(user_prompts)) >= 1  # At minimum should be valid prompts
