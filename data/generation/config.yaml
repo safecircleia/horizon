@@ -1,0 +1,35 @@
+# Data Generation Configuration
+
+# Target dataset size
+dataset_targets:
+  grooming: 1000
+  bullying: 1000
+  sexual_content: 1000
+  isolation: 1000
+  personal_info: 1000
+  platform_migration: 1000
+  threats: 1000
+  benign: 2000
+
+# Severity distribution (for risk categories)
+severity_distribution:
+  low: 0.25
+  medium: 0.35
+  high: 0.25
+  critical: 0.15
+
+# Generation parameters
+generation:
+  model_claude: "claude-3-5-sonnet-20241022"
+  model_openai: "gpt-4o-2024-08-06"
+  temperature: 0.9
+  max_tokens: 2000
+  batch_size: 10
+  retry_attempts: 3
+
+# Quality thresholds
+quality:
+  min_conversation_length: 4  # minimum messages
+  max_conversation_length: 30  # maximum messages
+  min_unique_tokens: 20  # vocabulary diversity
+  max_repetition_ratio: 0.3  # avoid copy-paste patterns
