@@ -6,6 +6,7 @@ from data.generation.prompts.base import (
     create_conversation_prompt
 )
 from data.generation.prompts.grooming import create_grooming_prompt
+from data.generation.prompts.bullying import create_bullying_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 
@@ -97,3 +98,25 @@ def test_grooming_prompt_critical_severity():
     assert prompt.severity == RiskLevel.CRITICAL
     # Critical should mention explicit manipulation
     assert len(prompt.user_prompt) > 200
+
+
+def test_bullying_prompt_low_severity():
+    """Test low severity bullying prompt."""
+    prompt = create_bullying_prompt(
+        severity=RiskLevel.LOW,
+        child_age=14,
+        num_messages=5
+    )
+    assert prompt.category == RiskCategory.BULLYING
+    assert "teasing" in prompt.user_prompt.lower() or "exclusion" in prompt.user_prompt.lower()
+
+
+def test_bullying_prompt_high_severity():
+    """Test high severity bullying prompt."""
+    prompt = create_bullying_prompt(
+        severity=RiskLevel.HIGH,
+        child_age=15,
+        num_messages=8
+    )
+    assert prompt.category == RiskCategory.BULLYING
+    assert "harassment" in prompt.user_prompt.lower() or "threats" in prompt.user_prompt.lower()
