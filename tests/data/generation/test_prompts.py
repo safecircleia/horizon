@@ -5,6 +5,7 @@ from data.generation.prompts.base import (
     format_system_prompt,
     create_conversation_prompt
 )
+from data.generation.prompts.grooming import create_grooming_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 
@@ -56,3 +57,43 @@ def test_prompt_template_format():
     assert formatted.system == "You are a test assistant."
     assert "5" in formatted.user
     assert "testing" in formatted.user
+
+
+def test_grooming_prompt_low_severity():
+    """Test low severity grooming prompt."""
+    prompt = create_grooming_prompt(
+        severity=RiskLevel.LOW,
+        child_age=15,
+        num_messages=6
+    )
+
+    assert prompt.category == RiskCategory.GROOMING
+    assert prompt.severity == RiskLevel.LOW
+    assert "trust building" in prompt.user_prompt.lower() or "friendly" in prompt.user_prompt.lower()
+
+
+def test_grooming_prompt_high_severity():
+    """Test high severity grooming prompt."""
+    prompt = create_grooming_prompt(
+        severity=RiskLevel.HIGH,
+        child_age=14,
+        num_messages=10
+    )
+
+    assert prompt.category == RiskCategory.GROOMING
+    assert prompt.severity == RiskLevel.HIGH
+    assert "secrecy" in prompt.user_prompt.lower() or "secret" in prompt.user_prompt.lower()
+
+
+def test_grooming_prompt_critical_severity():
+    """Test critical severity grooming prompt."""
+    prompt = create_grooming_prompt(
+        severity=RiskLevel.CRITICAL,
+        child_age=13,
+        num_messages=12
+    )
+
+    assert prompt.category == RiskCategory.GROOMING
+    assert prompt.severity == RiskLevel.CRITICAL
+    # Critical should mention explicit manipulation
+    assert len(prompt.user_prompt) > 200
