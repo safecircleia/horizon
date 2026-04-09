@@ -102,3 +102,60 @@ async def test_claude_generator_api_error():
         assert not result.success
         assert result.error is not None
         assert "API Error" in result.error
+
+
+# GPT Generator Tests
+
+
+@pytest.mark.asyncio
+async def test_gpt_generator_initialization():
+    """Test GPT generator initializes correctly."""
+    from data.generation.generators.gpt_generator import GPTGenerator
+
+    generator = GPTGenerator(api_key="test_key", model="gpt-4o-2024-08-06")
+    assert generator.name == "openai"
+    assert generator.model == "gpt-4o-2024-08-06"
+
+
+@pytest.mark.asyncio
+async def test_gpt_generator_success():
+    """Test successful generation with GPT."""
+    from data.generation.generators.gpt_generator import GPTGenerator
+    from data.generation.prompts.grooming import create_grooming_prompt
+
+    with patch('openai.AsyncOpenAI') as mock_client:
+        # Mock API response
+        mock_choice = type('Choice', (), {
+            'message': type('Message', (), {
+                'content': '{"messages": [{"role": "sent", "content": "test", "timestamp": 1000}], "reasoning": "test"}'
+            })()
+        })()
+        mock_response = type('Response', (), {'choices': [mock_choice]})()
+        mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        generator = GPTGenerator(api_key="test_key")
+        prompt = create_grooming_prompt(RiskLevel.LOW, 14, 5)
+        result = await generator.generate(prompt)
+
+        assert result.success
+        assert result.conversation is not None
+
+
+@pytest.mark.asyncio
+async def test_gpt_generator_api_error():
+    """Test handling of GPT API errors."""
+    from data.generation.generators.gpt_generator import GPTGenerator
+    from data.generation.prompts.grooming import create_grooming_prompt
+
+    with patch('openai.AsyncOpenAI') as mock_client:
+        mock_client.return_value.chat.completions.create = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+
+        generator = GPTGenerator(api_key="test_key")
+        prompt = create_grooming_prompt(RiskLevel.LOW, 14, 5)
+        result = await generator.generate(prompt)
+
+        assert not result.success
+        assert result.error is not None
+        assert "API Error" in result.error
