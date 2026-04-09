@@ -7,6 +7,7 @@ from data.generation.prompts.base import (
 )
 from data.generation.prompts.grooming import create_grooming_prompt
 from data.generation.prompts.bullying import create_bullying_prompt
+from data.generation.prompts.sexual_content import create_sexual_content_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 
@@ -120,3 +121,14 @@ def test_bullying_prompt_high_severity():
     )
     assert prompt.category == RiskCategory.BULLYING
     assert "harassment" in prompt.user_prompt.lower() or "threats" in prompt.user_prompt.lower()
+
+
+def test_sexual_content_prompt_medium_severity():
+    """Test medium severity sexual content prompt."""
+    prompt = create_sexual_content_prompt(
+        severity=RiskLevel.MEDIUM,
+        child_age=15,
+        num_messages=6
+    )
+    assert prompt.category == RiskCategory.SEXUAL_CONTENT
+    assert "inappropriate" in prompt.user_prompt.lower()
