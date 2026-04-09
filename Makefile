@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test format lint generate-data train evaluate quantize serve
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve
 
 # Default target
 help:
@@ -12,7 +12,11 @@ help:
 	@echo "Data Generation:"
 	@echo "  make generate-data CATEGORY=<category> COUNT=<count>"
 	@echo "                        Generate synthetic conversations"
+	@echo "  make generate-all     Generate complete 50K dataset"
+	@echo "  make generate-test    Generate 100 benign samples for testing"
 	@echo "  make validate-data    Validate generated dataset quality"
+	@echo "  make stats            Show dataset statistics and validation"
+	@echo "  make clean-data       Remove all generated JSONL files"
 	@echo ""
 	@echo "Training:"
 	@echo "  make train CONFIG=<config>  Train model with specified config"
@@ -57,7 +61,7 @@ clean:
 generate-data:
 	@if [ -z "$(CATEGORY)" ]; then echo "Error: CATEGORY required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
 	@if [ -z "$(COUNT)" ]; then echo "Error: COUNT required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
-	python -m data.generation.generators.main generate $(CATEGORY) --count $(COUNT)
+	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT); else python3 -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT); fi
 
 generate-all:
 	@echo "Generating complete 50K dataset..."
@@ -71,7 +75,20 @@ generate-all:
 	make generate-data CATEGORY=benign COUNT=10000
 
 validate-data:
-	python -m data.generation.validators.main validate data/raw/
+	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.validators.main validate data/raw/; else python3 -m data.generation.validators.main validate data/raw/; fi
+
+stats:
+	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.scripts.stats; else python3 -m data.generation.scripts.stats; fi
+
+clean-data:
+	@echo "Removing generated JSONL files..."
+	find data/raw -name "*.jsonl" -delete
+	find data/processed -name "*.jsonl" -delete 2>/dev/null || true
+	@echo "Done!"
+
+generate-test:
+	@echo "Generating 100 benign samples for testing..."
+	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.scripts.generate --category benign --count 100 --output data/raw/test_benign.jsonl; else python3 -m data.generation.scripts.generate --category benign --count 100 --output data/raw/test_benign.jsonl; fi
 
 # Training
 train:
