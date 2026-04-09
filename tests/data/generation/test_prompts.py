@@ -8,6 +8,10 @@ from data.generation.prompts.base import (
 from data.generation.prompts.grooming import create_grooming_prompt
 from data.generation.prompts.bullying import create_bullying_prompt
 from data.generation.prompts.sexual_content import create_sexual_content_prompt
+from data.generation.prompts.isolation import create_isolation_prompt
+from data.generation.prompts.personal_info import create_personal_info_prompt
+from data.generation.prompts.platform_migration import create_platform_migration_prompt
+from data.generation.prompts.threats import create_threats_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 
@@ -132,3 +136,27 @@ def test_sexual_content_prompt_medium_severity():
     )
     assert prompt.category == RiskCategory.SEXUAL_CONTENT
     assert "inappropriate" in prompt.user_prompt.lower()
+
+
+def test_isolation_prompt():
+    """Test isolation/control prompt."""
+    prompt = create_isolation_prompt(RiskLevel.MEDIUM, 14, 7)
+    assert prompt.category == RiskCategory.ISOLATION
+
+
+def test_personal_info_prompt():
+    """Test personal info request prompt."""
+    prompt = create_personal_info_prompt(RiskLevel.MEDIUM, 15, 6)
+    assert prompt.category == RiskCategory.PERSONAL_INFO
+
+
+def test_platform_migration_prompt():
+    """Test platform migration prompt."""
+    prompt = create_platform_migration_prompt(RiskLevel.MEDIUM, 14, 5)
+    assert prompt.category == RiskCategory.PLATFORM_MIGRATION
+
+
+def test_threats_prompt():
+    """Test threats/violence prompt."""
+    prompt = create_threats_prompt(RiskLevel.HIGH, 15, 8)
+    assert prompt.category == RiskCategory.THREATS
