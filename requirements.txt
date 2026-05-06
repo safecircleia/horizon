@@ -11,6 +11,7 @@ protobuf>=4.25.0
 # Data Generation
 anthropic>=0.25.0
 openai>=1.35.0
+httpx>=0.27.0
 jsonlines>=4.0.0
 pydantic>=2.7.0
 pyyaml>=6.0.1
@@ -39,6 +40,9 @@ uvicorn>=0.29.0
 
 # Quantization
 llama-cpp-python>=0.2.0
+
+# Notebook
+marimo>=0.9.0
 
 # Development
 black>=24.4.0

@@ -61,18 +61,19 @@ clean:
 generate-data:
 	@if [ -z "$(CATEGORY)" ]; then echo "Error: CATEGORY required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
 	@if [ -z "$(COUNT)" ]; then echo "Error: COUNT required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
-	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT); else python3 -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT); fi
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT) --generator $(or $(GENERATOR),bedrock) $(RESUME)
 
 generate-all:
-	@echo "Generating complete 50K dataset..."
-	make generate-data CATEGORY=grooming COUNT=8000
-	make generate-data CATEGORY=bullying COUNT=7000
-	make generate-data CATEGORY=sexual COUNT=7000
-	make generate-data CATEGORY=isolation COUNT=5000
-	make generate-data CATEGORY=personal_info COUNT=5000
-	make generate-data CATEGORY=platform_move COUNT=3000
-	make generate-data CATEGORY=threats COUNT=5000
-	make generate-data CATEGORY=benign COUNT=10000
+	@echo "Generating complete 50K dataset (resumable)..."
+	make generate-data CATEGORY=grooming COUNT=8000 RESUME=--resume
+	make generate-data CATEGORY=bullying COUNT=7000 RESUME=--resume
+	make generate-data CATEGORY=sexual_content COUNT=7000 RESUME=--resume
+	make generate-data CATEGORY=isolation COUNT=5000 RESUME=--resume
+	make generate-data CATEGORY=personal_info COUNT=5000 RESUME=--resume
+	make generate-data CATEGORY=platform_migration COUNT=3000 RESUME=--resume
+	make generate-data CATEGORY=threats COUNT=5000 RESUME=--resume
+	make generate-data CATEGORY=benign COUNT=10000 RESUME=--resume
 
 validate-data:
 	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.validators.main validate data/raw/; else python3 -m data.generation.validators.main validate data/raw/; fi
@@ -88,19 +89,27 @@ clean-data:
 
 generate-test:
 	@echo "Generating 100 benign samples for testing..."
-	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.scripts.generate --category benign --count 100 --output data/raw/test_benign.jsonl; else python3 -m data.generation.scripts.generate --category benign --count 100 --output data/raw/test_benign.jsonl; fi
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m data.generation.scripts.generate --category benign --count 100 --generator $(or $(GENERATOR),bedrock) --output data/raw/test_benign.jsonl
 
 # Training
+preprocess:
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m training.scripts.preprocess --input data/raw --output data/processed
+
 train:
-	@if [ -z "$(CONFIG)" ]; then echo "Error: CONFIG required. Use: make train CONFIG=configs/base.yaml"; exit 1; fi
-	python -m training.scripts.train --config $(CONFIG)
+	@if [ -z "$(CONFIG)" ]; then echo "Error: CONFIG required. Use: make train CONFIG=training/configs/base.yaml"; exit 1; fi
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m training.scripts.train --config $(CONFIG)
 
 train-quick:
-	python -m training.scripts.train --config configs/quick.yaml
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m training.scripts.train --config training/configs/quick.yaml
 
 resume:
-	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make resume CHECKPOINT=experiments/run-1/checkpoints/step-5000"; exit 1; fi
-	python -m training.scripts.train --resume $(CHECKPOINT)
+	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make resume CHECKPOINT=experiments/run-foo/checkpoints/step-500"; exit 1; fi
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON -m training.scripts.train --config training/configs/base.yaml --resume $(CHECKPOINT)
 
 # Evaluation
 evaluate:

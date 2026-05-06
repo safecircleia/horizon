@@ -2,13 +2,16 @@
 requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+exclude = ["data*", "models*", "training*", "inference*", "notebooks*", "evaluation*", "experiments*", "quantization*", "tests*"]
+
 [project]
 name = "horizon"
 version = "0.1.0"
 description = "SafeCircle Risk Detection Model Training System"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "TBD"}
+license = "LicenseRef-TBD"
 authors = [
     {name = "SafeCircle Team", email = "team@safecircle.tech"}
 ]

@@ -14,37 +14,40 @@ Usage:
     python generate.py --config custom_config.yaml
 """
 
-import asyncio
 import argparse
+import asyncio
+import datetime
 import os
-import sys
 import random
+import sys
 import uuid
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import jsonlines
 
 # Third-party imports
 import yaml
-import jsonlines
 from dotenv import load_dotenv
 from tqdm import tqdm
 
-# Local imports
-from data.generation.validators.schemas import (
-    RiskCategory,
-    RiskLevel,
-    Message,
-    ConversationLabel,
-    SyntheticConversation
-)
-from data.generation.validators.quality import validate_conversation_quality
 from data.generation.generators import (
-    ConversationGenerator,
+    BedrockGenerator,
     ClaudeGenerator,
-    GPTGenerator
+    ConversationGenerator,
+    GPTGenerator,
 )
 from data.generation.prompts.base import create_conversation_prompt
+from data.generation.validators.quality import validate_conversation_quality
+
+# Local imports
+from data.generation.validators.schemas import (
+    ConversationLabel,
+    Message,
+    RiskCategory,
+    RiskLevel,
+    SyntheticConversation,
+)
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -60,15 +63,14 @@ def load_config(config_path: str) -> Dict[str, Any]:
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
     return config
 
 
 def create_generator(
-    generator_type: str,
-    config: Dict[str, Any]
+    generator_type: str, config: Dict[str, Any]
 ) -> ConversationGenerator:
     """Create and initialize the appropriate generator.
 
@@ -79,27 +81,35 @@ def create_generator(
     Returns:
         Initialized ConversationGenerator
     """
-    gen_config = config.get('generation', {})
+    gen_config = config.get("generation", {})
 
-    if generator_type == 'claude':
+    if generator_type == "claude":
         return ClaudeGenerator(
-            model=gen_config.get('model_claude', 'claude-3-5-sonnet-20241022'),
-            temperature=gen_config.get('temperature', 0.9),
-            max_tokens=gen_config.get('max_tokens', 2000)
+            model=gen_config.get("model_claude", "claude-3-5-sonnet-20241022"),
+            temperature=gen_config.get("temperature", 0.9),
+            max_tokens=gen_config.get("max_tokens", 2000),
         )
-    elif generator_type == 'openai':
+    elif generator_type == "openai":
         return GPTGenerator(
-            model=gen_config.get('model_openai', 'gpt-4o-2024-08-06'),
-            temperature=gen_config.get('temperature', 0.9),
-            max_tokens=gen_config.get('max_tokens', 2000)
+            model=gen_config.get("model_openai", "gpt-4o-2024-08-06"),
+            temperature=gen_config.get("temperature", 0.9),
+            max_tokens=gen_config.get("max_tokens", 2000),
+        )
+    elif generator_type == "bedrock":
+        return BedrockGenerator(
+            model=gen_config.get(
+                "model_bedrock", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
+            ),
+            region=gen_config.get("bedrock_region", "eu-west-3"),
+            temperature=gen_config.get("temperature", 0.9),
+            max_tokens=gen_config.get("max_tokens", 2000),
         )
     else:
         raise ValueError(f"Unknown generator type: {generator_type}")
 
 
 def select_severity(
-    category: RiskCategory,
-    severity_distribution: Dict[str, float]
+    category: RiskCategory, severity_distribution: Dict[str, float]
 ) -> RiskLevel:
     """Select a random severity level based on distribution.
 
@@ -126,7 +136,7 @@ async def generate_conversation(
     category: RiskCategory,
     severity: RiskLevel,
     config: Dict[str, Any],
-    retry_attempts: int = 3
+    retry_attempts: int = 3,
 ) -> Optional[SyntheticConversation]:
     """Generate a single conversation with quality validation.
 
@@ -140,7 +150,7 @@ async def generate_conversation(
     Returns:
         Valid SyntheticConversation or None if all attempts fail
     """
-    quality_config = config.get('quality', {})
+    quality_config = config.get("quality", {})
 
     for attempt in range(retry_attempts):
         # Random parameters
@@ -152,7 +162,7 @@ async def generate_conversation(
             category=category,
             severity=severity,
             child_age=child_age,
-            num_messages=num_messages
+            num_messages=num_messages,
         )
 
         # Generate conversation
@@ -163,16 +173,16 @@ async def generate_conversation(
 
         try:
             # Parse messages
-            raw_messages = result.conversation.get('messages', [])
+            raw_messages = result.conversation.get("messages", [])
             messages = [Message(**msg) for msg in raw_messages]
 
             # Validate quality
             is_valid, errors = validate_conversation_quality(
                 messages,
-                min_length=quality_config.get('min_conversation_length', 4),
-                max_length=quality_config.get('max_conversation_length', 30),
-                min_unique_tokens=quality_config.get('min_unique_tokens', 20),
-                allow_consecutive_roles=True
+                min_length=quality_config.get("min_conversation_length", 4),
+                max_length=quality_config.get("max_conversation_length", 30),
+                min_unique_tokens=quality_config.get("min_unique_tokens", 20),
+                allow_consecutive_roles=True,
             )
 
             if not is_valid:
@@ -184,15 +194,19 @@ async def generate_conversation(
                 RiskLevel.LOW: 0.25,
                 RiskLevel.MEDIUM: 0.5,
                 RiskLevel.HIGH: 0.75,
-                RiskLevel.CRITICAL: 0.95
+                RiskLevel.CRITICAL: 0.95,
             }
 
             # Create label
             label = ConversationLabel(
                 risk_level=severity,
-                categories=[category] if category != RiskCategory.BENIGN else [RiskCategory.BENIGN],
+                categories=[category]
+                if category != RiskCategory.BENIGN
+                else [RiskCategory.BENIGN],
                 severity_score=severity_scores[severity],
-                reasoning=result.conversation.get('reasoning', 'Generated conversation')
+                reasoning=result.conversation.get(
+                    "reasoning", "Generated conversation"
+                ),
             )
 
             # Create synthetic conversation
@@ -202,17 +216,19 @@ async def generate_conversation(
                 messages=messages,
                 label=label,
                 metadata={
-                    'generator': generator.name,
-                    'child_age': child_age,
-                    'generated_at': datetime.utcnow().isoformat(),
-                    'model': generator.model,
-                    'attempt': attempt + 1
-                }
+                    "generator": generator.name,
+                    "child_age": child_age,
+                    "generated_at": datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).isoformat(),
+                    "model": generator.model,
+                    "attempt": attempt + 1,
+                },
             )
 
             return conversation
 
-        except Exception as e:
+        except BaseException:
             continue
 
     return None
@@ -222,59 +238,71 @@ async def generate_batch(
     generator: ConversationGenerator,
     category: RiskCategory,
     count: int,
-    config: Dict[str, Any]
+    config: Dict[str, Any],
+    concurrency: int = 10,
 ) -> List[SyntheticConversation]:
-    """Generate a batch of conversations.
+    """Generate a batch of conversations with a live worker pool."""
+    severity_dist = config.get("severity_distribution", {})
+    conversations: List[SyntheticConversation] = []
+    semaphore = asyncio.Semaphore(concurrency)
+    queue: asyncio.Queue = asyncio.Queue()
 
-    Args:
-        generator: LLM generator instance
-        category: Risk category to generate
-        count: Number of conversations to generate
-        config: Configuration dictionary
+    # Pre-fill queue with enough work (extra to account for failures)
+    needed = int(count * 1.3) + concurrency
+    for _ in range(needed):
+        await queue.put(select_severity(category, severity_dist))
 
-    Returns:
-        List of successfully generated conversations
-    """
-    severity_dist = config.get('severity_distribution', {})
-    conversations = []
+    async def worker():
+        while True:
+            try:
+                severity = queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            async with semaphore:
+                result = await generate_conversation(
+                    generator, category, severity, config
+                )
+            queue.task_done()
+            if result is not None:
+                conversations.append(result)
+                pbar.update(1)
+            if len(conversations) >= count:
+                return
+            # Refill queue if running low
+            if queue.empty():
+                await queue.put(select_severity(category, severity_dist))
 
     with tqdm(total=count, desc=f"Generating {category.value}", unit="conv") as pbar:
-        while len(conversations) < count:
-            # Select severity
-            severity = select_severity(category, severity_dist)
+        workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
+        await asyncio.gather(*workers)
 
-            # Generate conversation
-            conversation = await generate_conversation(
-                generator,
-                category,
-                severity,
-                config
-            )
+    return conversations[:count]
 
-            if conversation:
-                conversations.append(conversation)
-                pbar.update(1)
-            else:
-                # Failed after all retries - this counts as a failure but we continue
-                pbar.write(f"Warning: Failed to generate valid conversation after retries")
 
-    return conversations
+def count_existing(output_path: str) -> int:
+    """Count valid lines already written to a JSONL file."""
+    p = Path(output_path)
+    if not p.exists():
+        return 0
+    count = 0
+    with open(p) as f:
+        for line in f:
+            if line.strip():
+                count += 1
+    return count
 
 
 def write_conversations(
     conversations: List[SyntheticConversation],
-    output_path: str
+    output_path: str,
+    append: bool = False,
 ) -> None:
-    """Write conversations to JSONL file.
-
-    Args:
-        conversations: List of conversations to write
-        output_path: Output file path
-    """
+    """Write conversations to JSONL file."""
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    with jsonlines.open(output_file, mode='w') as writer:
+    mode = "a" if append else "w"
+    with jsonlines.open(output_file, mode=mode) as writer:
         for conv in conversations:
             writer.write(conv.model_dump())
 
@@ -282,7 +310,7 @@ def write_conversations(
 def print_summary(
     conversations: List[SyntheticConversation],
     category: RiskCategory,
-    elapsed_time: float
+    elapsed_time: float,
 ) -> None:
     """Print generation summary statistics.
 
@@ -306,17 +334,17 @@ def print_summary(
 
     generators = {}
     for conv in conversations:
-        gen = conv.metadata.get('generator', 'unknown')
+        gen = conv.metadata.get("generator", "unknown")
         generators[gen] = generators.get(gen, 0) + 1
 
     # Print summary
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(f"GENERATION SUMMARY: {category.value}")
-    print("="*60)
+    print("=" * 60)
     print(f"Total Conversations: {total}")
     print(f"Average Messages: {avg_messages:.1f}")
     print(f"Time Elapsed: {elapsed_time:.1f}s")
-    print(f"Rate: {total/elapsed_time:.2f} conv/s")
+    print(f"Rate: {total / elapsed_time:.2f} conv/s")
     print()
 
     print("Severity Distribution:")
@@ -329,7 +357,7 @@ def print_summary(
     for gen, count in sorted(generators.items()):
         percentage = (count / total) * 100
         print(f"  {gen:>10}: {count:>4} ({percentage:>5.1f}%)")
-    print("="*60)
+    print("=" * 60)
 
 
 async def main():
@@ -347,44 +375,47 @@ Examples:
 
   # Use custom config file
   python generate.py --config custom_config.yaml --category bullying --count 50
-        """
+        """,
     )
 
     parser.add_argument(
-        '--category',
+        "--category",
         type=str,
         required=True,
         choices=[cat.value for cat in RiskCategory],
-        help='Risk category to generate'
+        help="Risk category to generate",
     )
 
     parser.add_argument(
-        '--count',
-        type=int,
-        required=True,
-        help='Number of conversations to generate'
+        "--count", type=int, required=True, help="Number of conversations to generate"
     )
 
     parser.add_argument(
-        '--generator',
+        "--generator",
         type=str,
-        default='claude',
-        choices=['claude', 'openai'],
-        help='LLM generator to use (default: claude)'
+        default="claude",
+        choices=["claude", "openai", "bedrock"],
+        help="LLM generator to use (default: claude)",
     )
 
     parser.add_argument(
-        '--output',
+        "--output",
         type=str,
         default=None,
-        help='Output JSONL file path (default: data/raw/{category}.jsonl)'
+        help="Output JSONL file path (default: data/raw/{category}.jsonl)",
     )
 
     parser.add_argument(
-        '--config',
+        "--config",
         type=str,
-        default='data/generation/config.yaml',
-        help='Path to config.yaml (default: data/generation/config.yaml)'
+        default="data/generation/config.yaml",
+        help="Path to config.yaml (default: data/generation/config.yaml)",
+    )
+
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip already-generated conversations and append only what is missing",
     )
 
     args = parser.parse_args()
@@ -394,12 +425,16 @@ Examples:
 
     # Validate API keys
     generator_type = args.generator
-    if generator_type == 'claude' and not os.getenv('ANTHROPIC_API_KEY'):
+    if generator_type == "claude" and not os.getenv("ANTHROPIC_API_KEY"):
         print("Error: ANTHROPIC_API_KEY not found in environment", file=sys.stderr)
         print("Please set it in .env file or export it", file=sys.stderr)
         sys.exit(1)
-    elif generator_type == 'openai' and not os.getenv('OPENAI_API_KEY'):
+    elif generator_type == "openai" and not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY not found in environment", file=sys.stderr)
+        print("Please set it in .env file or export it", file=sys.stderr)
+        sys.exit(1)
+    elif generator_type == "bedrock" and not os.getenv("BEDROCK_API_KEY"):
+        print("Error: BEDROCK_API_KEY not found in environment", file=sys.stderr)
         print("Please set it in .env file or export it", file=sys.stderr)
         sys.exit(1)
 
@@ -421,41 +456,59 @@ Examples:
     category = RiskCategory(args.category)
     output_path = args.output or f"data/raw/{category.value}.jsonl"
 
+    # Resume: check how many already exist
+    already_have = 0
+    if args.resume:
+        already_have = count_existing(output_path)
+        if already_have >= args.count:
+            print(
+                f"Already have {already_have}/{args.count} conversations in {output_path} — skipping."
+            )
+            sys.exit(0)
+
+    remaining = args.count - already_have
+
     # Print configuration
-    print("="*60)
+    print("=" * 60)
     print("SafeCircle Data Generation")
-    print("="*60)
+    print("=" * 60)
     print(f"Category: {category.value}")
-    print(f"Count: {args.count}")
+    print(
+        f"Target: {args.count}  |  Already done: {already_have}  |  Remaining: {remaining}"
+    )
     print(f"Generator: {generator.name} ({generator.model})")
     print(f"Output: {output_path}")
     print(f"Config: {args.config}")
-    print("="*60)
+    print("=" * 60)
     print()
 
     # Generate conversations
-    start_time = datetime.now()
+    start_time = datetime.datetime.now()
 
+    concurrency = config.get("generation", {}).get("concurrency", 10)
     conversations = await generate_batch(
         generator,
         category,
-        args.count,
-        config
+        remaining,
+        config,
+        concurrency=concurrency,
     )
 
-    elapsed = (datetime.now() - start_time).total_seconds()
+    elapsed = (datetime.datetime.now() - start_time).total_seconds()
 
-    # Write to file
+    # Write to file (append if resuming)
     if conversations:
-        write_conversations(conversations, output_path)
+        write_conversations(
+            conversations, output_path, append=args.resume and already_have > 0
+        )
         print(f"\nWrote {len(conversations)} conversations to {output_path}")
 
     # Print summary
     print_summary(conversations, category, elapsed)
 
     # Exit with appropriate code
-    sys.exit(0 if len(conversations) == args.count else 1)
+    sys.exit(0 if len(conversations) == remaining else 1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

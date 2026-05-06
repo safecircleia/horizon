@@ -22,10 +22,13 @@ severity_distribution:
 generation:
   model_claude: "claude-3-5-sonnet-20241022"
   model_openai: "gpt-4o-2024-08-06"
+  model_bedrock: "eu.amazon.nova-micro-v1:0"
+  bedrock_region: "eu-west-3"
   temperature: 0.9
   max_tokens: 2000
   batch_size: 10
   retry_attempts: 3
+  concurrency: 10
 
 # Quality thresholds
 quality:

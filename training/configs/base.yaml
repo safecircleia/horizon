@@ -1,0 +1,72 @@
+# Horizon Training Configuration - Base
+
+# Model
+model:
+  base_model: "meta-llama/Llama-3.1-8B-Instruct"
+  torch_dtype: "bfloat16"
+  max_seq_length: 2048
+
+# QLoRA
+lora:
+  rank: 64
+  alpha: 128
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+# Quantization (for QLoRA training)
+quantization:
+  load_in_4bit: true
+  bnb_4bit_compute_dtype: "bfloat16"
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+
+# Training
+training:
+  output_dir: "experiments/run-{timestamp}"
+  max_steps: 10000
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  lr_scheduler_type: "cosine"
+  warmup_steps: 100
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  logging_steps: 50
+  eval_steps: 500
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "tensorboard"
+
+# Data
+data:
+  train_file: "data/processed/train.jsonl"
+  eval_file: "data/processed/eval.jsonl"
+  train_split: 0.9
+  max_seq_length: 2048
+
+# Training stages
+stages:
+  stage1:
+    name: "category_recognition"
+    steps: 3000
+    description: "Category recognition across all 7 risk types"
+  stage2:
+    name: "severity_calibration"
+    steps: 4000
+    description: "Severity calibration (none/low/medium/high/critical)"
+  stage3:
+    name: "false_positive_reduction"
+    steps: 3000
+    description: "False positive reduction on benign conversations"

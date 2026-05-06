@@ -76,8 +76,7 @@ models/*/quantized/*.bin
 *.onnx
 
 # Experiments
-experiments/*/checkpoints/
-experiments/*/logs/
+experiments/
 *.log
 
 # API keys and secrets
