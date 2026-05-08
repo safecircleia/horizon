@@ -22,27 +22,27 @@ configs:
 - config_name: raw
   data_files:
   - split: grooming
-    path: data/grooming/*
+    path: raw/grooming-*.parquet
   - split: bullying
-    path: data/bullying/*
+    path: raw/bullying-*.parquet
   - split: sexual_content
-    path: data/sexual_content/*
+    path: raw/sexual_content-*.parquet
   - split: isolation
-    path: data/isolation/*
+    path: raw/isolation-*.parquet
   - split: personal_info
-    path: data/personal_info/*
+    path: raw/personal_info-*.parquet
   - split: platform_migration
-    path: data/platform_migration/*
+    path: raw/platform_migration-*.parquet
   - split: threats
-    path: data/threats/*
+    path: raw/threats-*.parquet
   - split: benign
-    path: data/benign/*
+    path: raw/benign-*.parquet
 - config_name: processed
   data_files:
   - split: train
-    path: data/train/*
+    path: processed/train-*.parquet
   - split: eval
-    path: data/eval/*
+    path: processed/eval-*.parquet
 ---
 
 # Horizon Child Safety Risk Detection Dataset
