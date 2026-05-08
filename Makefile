@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data
 
 # Default target
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "  make validate-data    Validate generated dataset quality"
 	@echo "  make stats            Show dataset statistics and validation"
 	@echo "  make clean-data       Remove all generated JSONL files"
+	@echo "  make upload-data      Upload dataset to HuggingFace Hub (requires HF_TOKEN)"
+	@echo "  make download-data    Download dataset from HuggingFace Hub (requires HF_TOKEN)"
 	@echo ""
 	@echo "Training:"
 	@echo "  make train CONFIG=<config>  Train model with specified config"
@@ -86,6 +88,16 @@ clean-data:
 	find data/raw -name "*.jsonl" -delete
 	find data/processed -name "*.jsonl" -delete 2>/dev/null || true
 	@echo "Done!"
+
+upload-data:
+	@echo "Uploading dataset to HuggingFace Hub (SafeCircle/horizon-training-data)..."
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON data/scripts/upload_to_hub.py --split $(or $(SPLIT),all)
+
+download-data:
+	@echo "Downloading dataset from HuggingFace Hub (SafeCircle/horizon-training-data)..."
+	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
+	$$PYTHON data/scripts/download_from_hub.py --split $(or $(SPLIT),all)
 
 generate-test:
 	@echo "Generating 100 benign samples for testing..."

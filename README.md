@@ -10,8 +10,9 @@ Project Horizon trains custom AI models for privacy-preserving child safety risk
 # Install dependencies
 pip install -r requirements.txt
 
-# Generate synthetic data (1000 conversations)
-make generate-data CATEGORY=grooming COUNT=1000
+# Download dataset from HuggingFace (requires SafeCircle org access)
+export HF_TOKEN=your_token_here
+make download-data
 
 # Train model
 make train CONFIG=configs/base.yaml
@@ -57,12 +58,49 @@ horizon/
 - [API Reference](docs/api.md) - REST API and CLI documentation (coming soon)
 - [Model Card](models/v1.0/metadata/model_card.md) - Model capabilities and limitations (after training)
 
+## Dataset
+
+Training data is stored as a private HuggingFace dataset at [`SafeCircle/horizon-training-data`](https://huggingface.co/datasets/SafeCircle/horizon-training-data).
+
+The dataset contains two configurations:
+- **`raw`** — Per-category splits (grooming, bullying, sexual_content, isolation, personal_info, platform_migration, threats, benign) with full metadata
+- **`processed`** — Llama 3.1 instruction-formatted train/eval splits ready for fine-tuning
+
+**Access requires membership in the [SafeCircle HuggingFace org](https://huggingface.co/SafeCircle).** Contact the team to request access.
+
+```bash
+# Download all data (set HF_TOKEN first)
+export HF_TOKEN=hf_...
+make download-data
+
+# Download only processed splits
+make download-data SPLIT=processed
+
+# Upload updated data (maintainers only)
+make upload-data
+```
+
+You can also load the dataset directly in Python:
+
+```python
+from datasets import load_dataset
+
+# Processed splits (for training)
+ds = load_dataset("SafeCircle/horizon-training-data", name="processed", token="hf_...")
+train, eval = ds["train"], ds["eval"]
+
+# Raw per-category data
+raw = load_dataset("SafeCircle/horizon-training-data", name="raw", token="hf_...")
+grooming_samples = raw["grooming"]
+```
+
 ## Requirements
 
 - Python 3.10+
 - CUDA-capable GPU (A100 40GB recommended, RTX 4090 24GB minimum)
 - 100GB disk space (datasets + models)
-- Claude/GPT-4 API access (for data generation)
+- HuggingFace token with SafeCircle org access (for dataset download)
+- Claude/GPT-4 API access (for data generation only)
 
 ## Timeline
 
