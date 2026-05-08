@@ -8,7 +8,7 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 
-HF_REPO_ID = "SafeCircle/horizon-training-data"
+HF_REPO_ID = "safecircleai/horizon-training-data"
 
 RAW_CATEGORIES = [
     "grooming", "bullying", "sexual_content", "isolation",

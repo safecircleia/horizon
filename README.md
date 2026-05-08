@@ -60,13 +60,13 @@ horizon/
 
 ## Dataset
 
-Training data is stored as a private HuggingFace dataset at [`SafeCircle/horizon-training-data`](https://huggingface.co/datasets/SafeCircle/horizon-training-data).
+Training data is stored as a private HuggingFace dataset at [`safecircleai/horizon-training-data`](https://huggingface.co/datasets/safecircleai/horizon-training-data).
 
 The dataset contains two configurations:
 - **`raw`** — Per-category splits (grooming, bullying, sexual_content, isolation, personal_info, platform_migration, threats, benign) with full metadata
 - **`processed`** — Llama 3.1 instruction-formatted train/eval splits ready for fine-tuning
 
-**Access requires membership in the [SafeCircle HuggingFace org](https://huggingface.co/SafeCircle).** Contact the team to request access.
+**Access requires membership in the [safecircleai HuggingFace org](https://huggingface.co/safecircleai).** Contact the team to request access.
 
 ```bash
 # Download all data (set HF_TOKEN first)
@@ -86,11 +86,11 @@ You can also load the dataset directly in Python:
 from datasets import load_dataset
 
 # Processed splits (for training)
-ds = load_dataset("SafeCircle/horizon-training-data", name="processed", token="hf_...")
+ds = load_dataset("safecircleai/horizon-training-data", name="processed", token="hf_...")
 train, eval = ds["train"], ds["eval"]
 
 # Raw per-category data
-raw = load_dataset("SafeCircle/horizon-training-data", name="raw", token="hf_...")
+raw = load_dataset("safecircleai/horizon-training-data", name="raw", token="hf_...")
 grooming_samples = raw["grooming"]
 ```
 
