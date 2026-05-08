@@ -37,6 +37,7 @@ def load_model_and_tokenizer(
             bnb_4bit_compute_dtype=compute_dtype,
             bnb_4bit_quant_type=quant_cfg["bnb_4bit_quant_type"],
             bnb_4bit_use_double_quant=quant_cfg["bnb_4bit_use_double_quant"],
+            llm_int8_enable_fp32_cpu_offload=quant_cfg.get("llm_int8_enable_fp32_cpu_offload", False),
         )
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
@@ -44,6 +45,7 @@ def load_model_and_tokenizer(
             device_map="auto",
             trust_remote_code=True,
             torch_dtype=model_dtype,
+            max_memory=quant_cfg.get("max_memory", None),
         )
         model = prepare_model_for_kbit_training(model)
     else:

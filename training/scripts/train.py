@@ -106,6 +106,11 @@ def main():
     print("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(config)
 
+    # Enable gradient checkpointing if requested
+    if train_cfg.get("gradient_checkpointing", False):
+        model.gradient_checkpointing_enable()
+        print("Gradient checkpointing enabled")
+
     max_seq = data_cfg.get("max_seq_length", 2048)
 
     print(f"Loading training data from {data_cfg['train_file']}...")
@@ -122,6 +127,7 @@ def main():
         per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
         per_device_eval_batch_size=train_cfg["per_device_eval_batch_size"],
         gradient_accumulation_steps=train_cfg["gradient_accumulation_steps"],
+        gradient_checkpointing=train_cfg.get("gradient_checkpointing", False),
         learning_rate=train_cfg["learning_rate"],
         lr_scheduler_type=train_cfg["lr_scheduler_type"],
         warmup_steps=train_cfg["warmup_steps"],
