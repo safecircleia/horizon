@@ -173,6 +173,8 @@ where:
 | Max sequence length | 256 tokens |
 | Inference latency | <100ms (mobile) |
 
+\newpage
+
 ```{r model-comparison, fig.cap="Model size and latency comparison between Horizon variants."}
 models <- data.frame(
   Model = c("Horizon-Full\n(Llama 3.2 3B)", "Horizon-Mobile\n(MobileBERT)", "Horizon-Mobile\n(INT8 ONNX)"),
