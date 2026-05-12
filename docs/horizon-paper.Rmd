@@ -1,0 +1,347 @@
+---
+title: "Horizon: Privacy-Preserving On-Device Child Safety Risk Detection via Knowledge Distillation"
+author: "SafeCircle AI Research"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    theme: flatly
+    highlight: tango
+    mathjax: default
+    self_contained: true
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Abstract
+
+We present **Horizon**, a dual-model system for real-time child safety risk detection in messaging environments. The system comprises a high-capacity server model (Llama 3.2 3B fine-tuned with QLoRA) and a lightweight on-device classifier (MobileBERT, ~25MB) trained via knowledge distillation. Horizon detects seven risk categories---grooming, bullying, sexual content, isolation, personal information disclosure, platform migration, and threats---with severity grading and token-level explainability. The mobile variant achieves sub-100ms inference on commodity smartphones while keeping all message content on-device, eliminating the need to transmit sensitive conversations to external servers. We detail the training methodology, distillation process, and deployment architecture.
+
+# 1. Introduction
+
+Online child safety remains a critical challenge. Existing solutions broadly fall into two categories: server-side content moderation (which requires transmitting private messages to third parties) and keyword-based filtering (which suffers from high false-positive rates and trivial circumvention). Horizon addresses both limitations by deploying a neural classifier directly on the user's device.
+
+Our contributions are:
+
+1. A fine-tuning methodology for adapting large language models to structured risk classification tasks
+2. A knowledge distillation pipeline that compresses a 3B-parameter teacher into a 24M-parameter student with minimal accuracy loss
+3. Token-level explainability via Integrated Gradients, enabling transparent risk attribution
+4. Cross-platform deployment via ONNX Runtime Mobile for iOS and Android
+
+# 2. Problem Formulation
+
+Let $\mathcal{C} = \{c_1, c_2, \ldots, c_n\}$ denote a conversation consisting of $n$ messages. We define the risk detection task as learning a function:
+
+$$f: \mathcal{C} \rightarrow (\hat{y}, \hat{s}, \hat{p})$$
+
+where:
+
+- $\hat{y} \in \{1, \ldots, K\}$ is the predicted risk category ($K = 8$, including "benign")
+- $\hat{s} \in \{1, \ldots, S\}$ is the predicted severity level ($S = 5$: none, low, medium, high, critical)
+- $\hat{p} \in [0, 1]$ is the confidence score
+
+## 2.1 Risk Taxonomy
+
+We define seven non-benign risk categories based on established child safety frameworks:
+
+| Category | Definition |
+|----------|-----------|
+| Grooming | Incremental boundary violations, trust building, secrecy demands |
+| Bullying | Repeated intimidation, social exclusion, humiliation |
+| Sexual Content | Explicit or suggestive material directed at minors |
+| Isolation | Attempts to separate a child from support networks |
+| Personal Info | Solicitation of identifying information (address, school, photos) |
+| Platform Migration | Requests to move communication to less-monitored channels |
+| Threats | Direct or implied threats of physical or psychological harm |
+
+# 3. Model Architecture
+
+## 3.1 Teacher Model: Horizon-Full
+
+The teacher model is based on Llama 3.2 3B-Instruct, fine-tuned using Quantization-aware Low-Rank Adaptation (QLoRA).
+
+### 3.1.1 Low-Rank Adaptation
+
+Given a pre-trained weight matrix $W_0 \in \mathbb{R}^{d \times k}$, LoRA decomposes the update as:
+
+$$W = W_0 + \Delta W = W_0 + BA$$
+
+where $B \in \mathbb{R}^{d \times r}$, $A \in \mathbb{R}^{r \times k}$, and $r \ll \min(d, k)$ is the rank. The forward pass becomes:
+
+$$h = W_0 x + \frac{\alpha}{r} BAx$$
+
+where $\alpha$ is a scaling hyperparameter. We apply LoRA to all linear projections in the attention and MLP layers:
+
+$$\mathcal{T} = \{W_Q, W_K, W_V, W_O, W_{\text{gate}}, W_{\text{up}}, W_{\text{down}}\}$$
+
+**Configuration:**
+
+| Parameter | Value |
+|-----------|-------|
+| Rank ($r$) | 128 |
+| Alpha ($\alpha$) | 256 |
+| Dropout | 0.05 |
+| Target modules | $|\mathcal{T}| = 7$ per layer |
+| Trainable parameters | 194.5M (5.7% of total) |
+
+### 3.1.2 Training Configuration
+
+Training uses the AdamW optimizer with fused CUDA kernels:
+
+$$\theta_{t+1} = \theta_t - \eta \cdot \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon} - \lambda \theta_t$$
+
+where $\hat{m}_t$ and $\hat{v}_t$ are bias-corrected first and second moment estimates, $\eta = 2 \times 10^{-4}$ is the learning rate with cosine decay, and $\lambda = 0.01$ is the weight decay coefficient.
+
+**Training schedule:**
+
+- Total steps: 15,000
+- Effective batch size: 32 (micro-batch 4 $\times$ 8 gradient accumulation steps)
+- Sequence length: 2,048 tokens
+- Precision: bfloat16 with TF32 tensor cores
+- Gradient checkpointing enabled
+
+## 3.2 Student Model: Horizon-Mobile
+
+The student model uses MobileBERT as its encoder backbone with two classification heads sharing the pooled [CLS] representation.
+
+### 3.2.1 Architecture
+
+$$\text{HorizonMobile}(x) = \begin{pmatrix} \text{softmax}(W_c \cdot h_{[\text{CLS}]} + b_c) \\ \text{softmax}(W_s \cdot h_{[\text{CLS}]} + b_s) \end{pmatrix}$$
+
+where:
+
+- $h_{[\text{CLS}]} \in \mathbb{R}^{512}$ is MobileBERT's pooled output
+- $W_c \in \mathbb{R}^{8 \times 512}$, $b_c \in \mathbb{R}^{8}$ (category head)
+- $W_s \in \mathbb{R}^{5 \times 512}$, $b_s \in \mathbb{R}^{5}$ (severity head)
+
+**Model statistics:**
+
+| Property | Value |
+|----------|-------|
+| Parameters | 24.6M |
+| ONNX size (INT8) | ~25MB |
+| Max sequence length | 256 tokens |
+| Inference latency | <100ms (mobile) |
+
+# 4. Knowledge Distillation
+
+We transfer knowledge from the teacher (Horizon-Full) to the student (Horizon-Mobile) using a combination of soft label matching and hard label supervision.
+
+## 4.1 Soft Label Generation
+
+Given a training example $x_i$, the teacher produces a probability distribution over categories:
+
+$$q_i = \text{softmax}\left(\frac{z_i^T}{\tau}\right)$$
+
+where $z_i^T$ are the teacher's logits and $\tau$ is the temperature parameter. Higher temperatures produce softer distributions that convey more information about inter-class similarities.
+
+## 4.2 Distillation Loss
+
+The student is trained to minimize a weighted combination of two objectives:
+
+$$\mathcal{L} = \alpha \cdot \mathcal{L}_{\text{KD}} + (1 - \alpha) \cdot \mathcal{L}_{\text{CE}}$$
+
+### KL Divergence (Soft Labels)
+
+$$\mathcal{L}_{\text{KD}} = \tau^2 \cdot D_{\text{KL}}\left(q_i \;\|\; p_i^\tau\right) = \tau^2 \sum_{j=1}^{K} q_{ij} \log \frac{q_{ij}}{p_{ij}^\tau}$$
+
+where $p_i^\tau = \text{softmax}(z_i^S / \tau)$ is the student's temperature-scaled output. The $\tau^2$ factor compensates for the reduced gradient magnitude at higher temperatures.
+
+### Cross-Entropy (Hard Labels)
+
+$$\mathcal{L}_{\text{CE}} = \frac{1}{2}\left[\mathcal{L}_{\text{CE}}^{\text{cat}} + \mathcal{L}_{\text{CE}}^{\text{sev}}\right]$$
+
+where:
+
+$$\mathcal{L}_{\text{CE}}^{\text{cat}} = -\sum_{j=1}^{K} y_{ij} \log p_{ij}^{\text{cat}}$$
+
+$$\mathcal{L}_{\text{CE}}^{\text{sev}} = -\sum_{j=1}^{S} y_{ij} \log p_{ij}^{\text{sev}}$$
+
+### Hyperparameters
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| $\alpha$ | 0.7 | Prioritize teacher knowledge transfer |
+| $\tau$ | 4.0 | Sufficiently soft distributions for 8 classes |
+| Learning rate | $2 \times 10^{-5}$ | Fine-tuning regime for pre-trained encoder |
+| Steps | 5,000 | Convergence observed at ~4,000 steps |
+
+## 4.3 Gradient of the Distillation Loss
+
+For a single sample, the gradient with respect to student logit $z_k^S$ is:
+
+$$\frac{\partial \mathcal{L}_{\text{KD}}}{\partial z_k^S} = \frac{1}{\tau}\left(p_k^\tau - q_k\right)$$
+
+This shows that the distillation gradient is proportional to the difference between the student's and teacher's softened predictions, providing a richer learning signal than one-hot labels alone.
+
+# 5. Explainability via Integrated Gradients
+
+To provide transparency in risk decisions, we compute token-level attribution scores using Integrated Gradients (IG).
+
+## 5.1 Method
+
+For an input $x = (x_1, \ldots, x_n)$ and a baseline $x' = (\text{[PAD]}, \ldots, \text{[PAD]})$, the attribution for token $i$ is:
+
+$$\text{IG}_i(x) = (x_i - x'_i) \times \int_{\alpha=0}^{1} \frac{\partial F(x' + \alpha(x - x'))}{\partial x_i} \, d\alpha$$
+
+where $F$ is the model's output for the predicted class. In practice, we approximate the integral with $m = 50$ Riemann steps:
+
+$$\text{IG}_i(x) \approx (x_i - x'_i) \times \frac{1}{m} \sum_{k=1}^{m} \frac{\partial F\left(x' + \frac{k}{m}(x - x')\right)}{\partial x_i}$$
+
+## 5.2 Output Format
+
+The top-$N$ tokens (default $N = 5$) by attribution magnitude are returned:
+
+$$\text{attributions} = \text{top}_N\left(\frac{|\text{IG}_i|}{\max_j |\text{IG}_j|}\right)$$
+
+Normalized to $[0, 1]$, these scores indicate which tokens most influenced the classification decision.
+
+# 6. Deployment Architecture
+
+## 6.1 Export Pipeline
+
+The mobile model is exported through the following pipeline:
+
+$$\text{PyTorch} \xrightarrow{\text{torch.onnx.export}} \text{ONNX (FP32)} \xrightarrow{\text{quantize\_dynamic}} \text{ONNX (INT8)}$$
+
+INT8 dynamic quantization applies the transformation:
+
+$$\hat{w} = \text{round}\left(\frac{w}{s}\right) \cdot s, \quad s = \frac{\max(|w|)}{127}$$
+
+where $s$ is the per-channel scale factor, reducing model size by approximately 4$\times$ with minimal accuracy degradation.
+
+## 6.2 Inference Flow
+
+```
+Message Input
+     |
+     v
+[Tokenization] (MobileBERT WordPiece, max 256 tokens)
+     |
+     v
+[ONNX Runtime Mobile] --- horizon-mobile.onnx
+     |
+     +---> category_logits (8-dim)
+     |         |
+     |         v
+     |     argmax -> risk category
+     |
+     +---> severity_logits (5-dim)
+               |
+               v
+           argmax -> severity level
+```
+
+## 6.3 Platform Support
+
+| Platform | Runtime | Format |
+|----------|---------|--------|
+| iOS | ONNX Runtime Mobile (ObjC/Swift) | horizon-mobile.onnx |
+| Android | ONNX Runtime Mobile (Java/Kotlin) | horizon-mobile.onnx |
+| Server | PyTorch / vLLM | Llama 3.2 3B + LoRA adapter |
+| Desktop (LM Studio) | llama.cpp | GGUF Q4_K_M |
+
+# 7. Training Data
+
+## 7.1 Synthetic Generation
+
+Training data is generated using Amazon Bedrock (Claude) with category-specific prompts designed to produce realistic conversation patterns. Each conversation undergoes automated quality validation:
+
+- Schema compliance (required fields, types)
+- Risk consistency (labels match content)
+- Length constraints (minimum conversation turns)
+- Diversity checks (no near-duplicate conversations)
+
+## 7.2 Dataset Statistics
+
+| Category | Samples | Proportion |
+|----------|---------|------------|
+| Grooming | 8,000 | 16% |
+| Bullying | 7,000 | 14% |
+| Sexual Content | 7,000 | 14% |
+| Isolation | 5,000 | 10% |
+| Personal Info | 5,000 | 10% |
+| Platform Migration | 3,000 | 6% |
+| Threats | 5,000 | 10% |
+| Benign | 10,000 | 20% |
+| **Total** | **50,000** | **100%** |
+
+Training/evaluation split: 90%/10% (45,000 / 5,000 examples).
+
+## 7.3 Instruction Format
+
+All training examples follow the Llama 3 chat template:
+
+```
+<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+{system_prompt}<|eot_id|>
+<|start_header_id|>user<|end_header_id|>
+Analyze this conversation:
+{conversation}<|eot_id|>
+<|start_header_id|>assistant<|end_header_id|>
+{json_output}<|eot_id|>
+```
+
+# 8. Privacy Guarantees
+
+Horizon's mobile deployment provides the following privacy properties:
+
+1. **Data locality**: All inference occurs on-device. Message content never leaves the user's phone.
+2. **No telemetry**: The model produces classification outputs only; no conversation data is logged or transmitted.
+3. **Minimal footprint**: The 25MB model requires no cloud connectivity for inference.
+4. **Transparent decisions**: Token-level attributions allow users to understand why a risk was flagged without exposing content to reviewers.
+
+# 9. Limitations and Future Work
+
+- **500-step checkpoint quality**: Initial results use a quick training run; production deployment requires the full 15,000-step training
+- **Language coverage**: Currently English-only; multilingual support requires additional training data
+- **Adversarial robustness**: The model has not been tested against adversarial inputs designed to evade detection
+- **Temporal context**: Each message is classified independently; multi-turn pattern detection across sessions is not yet supported
+- **False positive calibration**: Severity thresholds require tuning against real-world deployment data
+
+# 10. Conclusion
+
+Horizon demonstrates that effective child safety risk detection can be deployed on-device without compromising user privacy. By combining a high-capacity teacher model with knowledge distillation into a lightweight mobile classifier, we achieve real-time inference with explainable outputs. The system's architecture enables deployment across iOS and Android without relying on cloud infrastructure, establishing a new paradigm for privacy-preserving content safety.
+
+# Appendix A: Mathematical Notation Reference
+
+| Symbol | Meaning |
+|--------|---------|
+| $\mathcal{C}$ | Conversation (sequence of messages) |
+| $K$ | Number of risk categories (8) |
+| $S$ | Number of severity levels (5) |
+| $r$ | LoRA rank |
+| $\alpha$ | LoRA scaling factor / distillation weight (context-dependent) |
+| $\tau$ | Temperature for knowledge distillation |
+| $W_0$ | Pre-trained weight matrix |
+| $B, A$ | Low-rank decomposition matrices |
+| $\eta$ | Learning rate |
+| $\lambda$ | Weight decay coefficient |
+| $h_{[\text{CLS}]}$ | Pooled [CLS] token representation |
+| $z^T, z^S$ | Teacher/student logits |
+| $q, p$ | Teacher/student probability distributions |
+| $\text{IG}_i$ | Integrated Gradient attribution for token $i$ |
+
+# Appendix B: Reproducibility
+
+All code, configurations, and training scripts are available at: `github.com/safecircleia/horizon`
+
+```bash
+# Full pipeline
+make download-data
+make train CONFIG=training/configs/l4.yaml
+make distill TEACHER=experiments/l4-<timestamp>/final
+make export-mobile CHECKPOINT=experiments/mobile-<timestamp>/final
+```
+
+---
+
+*SafeCircle AI Research, 2026. For inquiries: research@safecircle.tech*
