@@ -1,6 +1,6 @@
 ---
 title: "Horizon: Privacy-Preserving On-Device Child Safety Risk Detection via Knowledge Distillation"
-author: "SafeCircle AI Research"
+author: "Tomás Palma Sánchez"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -344,4 +344,4 @@ make export-mobile CHECKPOINT=experiments/mobile-<timestamp>/final
 
 ---
 
-*SafeCircle AI Research, 2026. For inquiries: research@safecircle.tech*
+*Tomás Palma Sánchez, SafeCircle, 2026. Contact: tomas@safecircle.tech*
