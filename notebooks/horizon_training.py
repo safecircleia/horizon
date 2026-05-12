@@ -76,8 +76,8 @@ def _(mo):
 
 
 @app.cell
-def _(Path, json, mo):
-    raw_dir = Path("data/raw")
+def _(ROOT, mo):
+    raw_dir = ROOT / "data" / "raw"
     categories = ["grooming", "bullying", "sexual_content", "isolation",
                   "personal_info", "platform_migration", "threats", "benign"]
 
@@ -97,6 +97,49 @@ def _(Path, json, mo):
 
     mo.ui.table(stats, label=f"Raw dataset — {total:,} conversations")
     return categories, raw_dir, stats, total
+
+
+@app.cell
+def _(mo):
+    mo.md("## ⬇️ Step 0: Download Dataset")
+    return
+
+
+@app.cell
+def _(mo, os):
+    hf_token = os.getenv("HF_TOKEN", "")
+    _token_status = (
+        mo.callout(mo.md("✅ `HF_TOKEN` found in environment — ready to download."), kind="success")
+        if hf_token
+        else mo.callout(mo.md("⚠️ `HF_TOKEN` not set. Add it to your `.env` file before downloading."), kind="warn")
+    )
+    _split_opts = {"All (raw + processed)": "all", "Processed only (train/eval)": "processed", "Raw only": "raw"}
+    download_split = mo.ui.dropdown(options=_split_opts, value="All (raw + processed)", label="Dataset split")
+    mo.vstack([_token_status, download_split])
+    return download_split, hf_token
+
+
+@app.cell
+def _(mo):
+    run_download_btn = mo.ui.run_button(label="⬇️ Download Dataset from HuggingFace")
+    run_download_btn
+    return (run_download_btn,)
+
+
+@app.cell
+def _(download_split, mo, run_download_btn, subprocess):
+    mo.stop(not run_download_btn.value)
+
+    _result = subprocess.run(
+        ["python", "data/scripts/download_from_hub.py", "--split", download_split.value],
+        capture_output=True, text=True
+    )
+
+    if _result.returncode == 0:
+        mo.callout(mo.md(f"✅ Download complete\n```\n{_result.stdout[-2000:]}\n```"), kind="success")
+    else:
+        mo.callout(mo.md(f"❌ Download failed\n```\n{_result.stderr[-2000:]}\n```"), kind="danger")
+    return
 
 
 @app.cell
