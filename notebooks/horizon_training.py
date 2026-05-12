@@ -55,12 +55,17 @@ def _(mo):
         gpu_name = torch.cuda.get_device_name(0)
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
         hw_info = f"**GPU detected:** {gpu_name} ({gpu_mem:.1f} GB VRAM)"
-        hw_color = "green"
+        if gpu_mem >= 20:
+            hw_info += "\n\n✅ High-VRAM GPU detected — use **L4 config** for full bfloat16 training (no 4-bit needed)."
+            hw_color = "success"
+        else:
+            hw_info += f"\n\n⚠️ {gpu_mem:.1f} GB VRAM — use **Quick** or **Base** config with 4-bit quantization."
+            hw_color = "warn"
     else:
         hw_info = "**No GPU found** — training will run on CPU (slow, not recommended)"
-        hw_color = "orange"
+        hw_color = "warn"
 
-    mo.callout(mo.md(hw_info), kind="success" if has_cuda else "warn")
+    mo.callout(mo.md(hw_info), kind=hw_color)
     return gpu_mem, gpu_name, has_cuda, torch
 
 
@@ -171,8 +176,12 @@ def _(mo):
 @app.cell
 def _(mo):
     config_choice = mo.ui.dropdown(
-        options={"Quick (500 steps, for testing)": "training/configs/quick.yaml",
-                 "Full (10,000 steps, production)": "training/configs/base.yaml"},
+        options={
+            "Quick (500 steps, for testing)": "training/configs/quick.yaml",
+            "Base (10,000 steps, production)": "training/configs/base.yaml",
+            "L4 GPU (15,000 steps, full bfloat16)": "training/configs/l4.yaml",
+            "Mobile distillation (MobileBERT)": "training/configs/mobile.yaml",
+        },
         value="Quick (500 steps, for testing)",
         label="Training config",
     )
@@ -250,6 +259,88 @@ def _(checkpoint_select, mo, run_eval_btn, subprocess):
         mo.callout(mo.md(f"✅ Evaluation complete\n```\n{_result.stdout}\n```"), kind="success")
     else:
         mo.callout(mo.md(f"❌ Evaluation failed\n```\n{_result.stderr}\n```"), kind="danger")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("## 🧪 Step 3.5: Knowledge Distillation (Mobile Model)")
+    return
+
+
+@app.cell
+def _(Path, mo):
+    _runs = sorted(Path("experiments").glob("*/final"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []
+    _options = {str(p): str(p) for p in _runs} if _runs else {"No checkpoints found": ""}
+    teacher_select = mo.ui.dropdown(options=_options, label="Teacher checkpoint (horizon-full)")
+    mo.vstack([mo.md("Select the trained `horizon-full` checkpoint to distill from:"), teacher_select])
+    return (teacher_select,)
+
+
+@app.cell
+def _(mo):
+    run_distill_btn = mo.ui.run_button(label="▶ Run Distillation")
+    run_distill_btn
+    return (run_distill_btn,)
+
+
+@app.cell
+def _(mo, run_distill_btn, subprocess, teacher_select):
+    mo.stop(not run_distill_btn.value)
+    mo.stop(not teacher_select.value)
+    _result = subprocess.run(
+        ["python", "-m", "training.scripts.distill",
+         "--teacher", teacher_select.value,
+         "--config", "training/configs/mobile.yaml"],
+        capture_output=True, text=True
+    )
+    if _result.returncode == 0:
+        mo.callout(mo.md(f"✅ Distillation complete\n```\n{_result.stdout[-3000:]}\n```"), kind="success")
+    else:
+        mo.callout(mo.md(f"❌ Distillation failed\n```\n{_result.stderr[-3000:]}\n```"), kind="danger")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("## 📦 Step 4.5: Export Mobile Model to ONNX")
+    return
+
+
+@app.cell
+def _(Path, mo):
+    _mobile_runs = sorted(Path("experiments").glob("mobile-*/final"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []
+    _options = {str(p): str(p) for p in _mobile_runs} if _mobile_runs else {"No mobile checkpoints found": ""}
+    mobile_checkpoint_select = mo.ui.dropdown(options=_options, label="Mobile checkpoint to export")
+    mo.vstack([mo.md("Select a trained mobile checkpoint to export:"), mobile_checkpoint_select])
+    return (mobile_checkpoint_select,)
+
+
+@app.cell
+def _(mo):
+    run_export_btn = mo.ui.run_button(label="▶ Export to ONNX")
+    run_export_btn
+    return (run_export_btn,)
+
+
+@app.cell
+def _(mo, mobile_checkpoint_select, run_export_btn, subprocess):
+    mo.stop(not run_export_btn.value)
+    mo.stop(not mobile_checkpoint_select.value)
+    _result = subprocess.run(
+        ["python", "-m", "training.scripts.export_onnx",
+         "--checkpoint", mobile_checkpoint_select.value,
+         "--output", "models/mobile",
+         "--quantize"],
+        capture_output=True, text=True
+    )
+    if _result.returncode == 0:
+        from pathlib import Path as _Path
+        _sizes = {p.name: f"{p.stat().st_size / 1e6:.1f} MB" for p in _Path("models/mobile").glob("*.onnx")} if _Path("models/mobile").exists() else {}
+        _size_info = "\n".join(f"- `{k}`: {v}" for k, v in _sizes.items()) or "No ONNX files found"
+        mo.callout(mo.md(f"✅ Export complete\n\n**Output files:**\n{_size_info}\n\n```\n{_result.stdout[-2000:]}\n```"), kind="success")
+    else:
+        mo.callout(mo.md(f"❌ Export failed\n```\n{_result.stderr[-3000:]}\n```"), kind="danger")
     return
 
 
