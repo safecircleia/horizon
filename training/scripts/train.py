@@ -14,6 +14,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import torch
 import yaml
 from dotenv import load_dotenv
