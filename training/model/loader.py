@@ -48,8 +48,19 @@ def load_model_and_tokenizer(
             max_memory=quant_cfg.get("max_memory", None),
         )
         model = prepare_model_for_kbit_training(model)
+    elif torch.cuda.is_available():
+        # Full precision GPU path (L4 / high-VRAM GPUs)
+        kwargs = dict(
+            device_map="cuda:0",
+            trust_remote_code=True,
+            torch_dtype=model_dtype,
+        )
+        attn_impl = model_cfg.get("attn_implementation")
+        if attn_impl:
+            kwargs["attn_implementation"] = attn_impl
+        model = AutoModelForCausalLM.from_pretrained(model_cfg["base_model"], **kwargs)
     else:
-        # CPU fallback: load in full precision, no quantization
+        # CPU fallback
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
             device_map="cpu",
