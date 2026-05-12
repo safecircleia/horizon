@@ -44,7 +44,7 @@ def load_model_and_tokenizer(
             quantization_config=bnb_config,
             device_map="auto",
             trust_remote_code=True,
-            torch_dtype=model_dtype,
+            dtype=model_dtype,
             max_memory=quant_cfg.get("max_memory", None),
         )
         model = prepare_model_for_kbit_training(model)
@@ -53,7 +53,7 @@ def load_model_and_tokenizer(
         kwargs = dict(
             device_map="cuda:0",
             trust_remote_code=True,
-            torch_dtype=model_dtype,
+            dtype=model_dtype,
         )
         attn_impl = model_cfg.get("attn_implementation")
         if attn_impl:
@@ -65,7 +65,7 @@ def load_model_and_tokenizer(
             model_cfg["base_model"],
             device_map="cpu",
             trust_remote_code=True,
-            torch_dtype=model_dtype,
+            dtype=model_dtype,
         )
 
     lora_config = LoraConfig(
@@ -98,7 +98,7 @@ def load_for_inference(
 
     model = AutoModelForCausalLM.from_pretrained(
         base,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="auto",
     )
     model = PeftModel.from_pretrained(model, checkpoint_path)
