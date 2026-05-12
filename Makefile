@@ -123,6 +123,25 @@ resume:
 	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
 	$$PYTHON -m training.scripts.train --config training/configs/base.yaml --resume $(CHECKPOINT)
 
+## Train on L4 GPU (full bfloat16, no 4-bit)
+train-l4:
+	python -m training.scripts.train --config training/configs/l4.yaml
+
+## Distill horizon-full into horizon-mobile
+## Usage: make distill TEACHER=experiments/l4-xxx/final
+distill:
+	python -m training.scripts.distill \
+		--teacher $(TEACHER) \
+		--config training/configs/mobile.yaml
+
+## Export mobile model to ONNX
+## Usage: make export-mobile CHECKPOINT=experiments/mobile-xxx/final
+export-mobile:
+	python -m training.scripts.export_onnx \
+		--checkpoint $(CHECKPOINT) \
+		--output models/mobile \
+		--quantize
+
 # Evaluation
 evaluate:
 	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make evaluate CHECKPOINT=experiments/run-1/checkpoints/step-5000"; exit 1; fi
