@@ -148,6 +148,8 @@ ggplot(train_data, aes(x = Step, y = Loss)) +
   theme_horizon
 ```
 
+\newpage
+
 ## Student Model: Horizon-Mobile
 
 The student model uses MobileBERT as its encoder backbone with two classification heads sharing the pooled [CLS] representation.
