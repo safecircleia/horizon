@@ -113,5 +113,8 @@ temp/
 docs/_build/
 site/
 
+# Git worktrees
+.worktrees/
+
 # Keep directory structure but ignore contents
 !.gitkeep
