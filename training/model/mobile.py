@@ -47,6 +47,7 @@ class HorizonMobileModel(nn.Module):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> Dict:
+        self.eval()
         with torch.no_grad():
             logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
         cat_probs = torch.softmax(logits["category_logits"], dim=-1)[0]
@@ -68,6 +69,6 @@ class HorizonMobileModel(nn.Module):
     @classmethod
     def from_pretrained(cls, path: str) -> "HorizonMobileModel":
         model = cls(pretrained=False)
-        state = torch.load(f"{path}/pytorch_model.bin", map_location="cpu")
+        state = torch.load(f"{path}/pytorch_model.bin", map_location="cpu", weights_only=True)
         model.load_state_dict(state)
         return model
