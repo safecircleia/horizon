@@ -76,7 +76,7 @@ def main():
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--output", default="models/mobile")
     parser.add_argument("--max-seq-length", type=int, default=256)
-    parser.add_argument("--quantize", action="store_true", default=True)
+    parser.add_argument("--quantize", action="store_true", default=False)
     args = parser.parse_args()
 
     out_dir = Path(args.output)
