@@ -21,11 +21,11 @@ bibliography: references.bib
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
-# Abstract
+# Abstract {-}
 
 We present **Horizon**, a dual-model system for real-time child safety risk detection in messaging environments. The system comprises a high-capacity server model (Llama 3.2 3B fine-tuned with QLoRA) and a lightweight on-device classifier (MobileBERT, ~25MB) trained via knowledge distillation. Horizon detects seven risk categories---grooming, bullying, sexual content, isolation, personal information disclosure, platform migration, and threats---with severity grading and token-level explainability. The mobile variant achieves sub-100ms inference on commodity smartphones while keeping all message content on-device, eliminating the need to transmit sensitive conversations to external servers. We detail the training methodology, distillation process, and deployment architecture.
 
-# 1. Introduction
+# Introduction
 
 Online child safety remains a critical challenge. Existing solutions broadly fall into two categories: server-side content moderation (which requires transmitting private messages to third parties) and keyword-based filtering (which suffers from high false-positive rates and trivial circumvention). Horizon addresses both limitations by deploying a neural classifier directly on the user's device.
 
@@ -36,7 +36,7 @@ Our contributions are:
 3. Token-level explainability via Integrated Gradients, enabling transparent risk attribution
 4. Cross-platform deployment via ONNX Runtime Mobile for iOS and Android
 
-# 2. Problem Formulation
+# Problem Formulation
 
 Let $\mathcal{C} = \{c_1, c_2, \ldots, c_n\}$ denote a conversation consisting of $n$ messages. We define the risk detection task as learning a function:
 
@@ -48,7 +48,7 @@ where:
 - $\hat{s} \in \{1, \ldots, S\}$ is the predicted severity level ($S = 5$: none, low, medium, high, critical)
 - $\hat{p} \in [0, 1]$ is the confidence score
 
-## 2.1 Risk Taxonomy
+## Risk Taxonomy
 
 We define seven non-benign risk categories based on established child safety frameworks:
 
@@ -62,13 +62,13 @@ We define seven non-benign risk categories based on established child safety fra
 | Platform Migration | Requests to move communication to less-monitored channels |
 | Threats | Direct or implied threats of physical or psychological harm |
 
-# 3. Model Architecture
+# Model Architecture
 
-## 3.1 Teacher Model: Horizon-Full
+## Teacher Model: Horizon-Full
 
 The teacher model is based on Llama 3.2 3B-Instruct, fine-tuned using Quantization-aware Low-Rank Adaptation (QLoRA).
 
-### 3.1.1 Low-Rank Adaptation
+### Low-Rank Adaptation
 
 Given a pre-trained weight matrix $W_0 \in \mathbb{R}^{d \times k}$, LoRA decomposes the update as:
 
@@ -92,7 +92,7 @@ $$\mathcal{T} = \{W_Q, W_K, W_V, W_O, W_{\text{gate}}, W_{\text{up}}, W_{\text{d
 | Target modules | $|\mathcal{T}| = 7$ per layer |
 | Trainable parameters | 194.5M (5.7% of total) |
 
-### 3.1.2 Training Configuration
+### Training Configuration
 
 Training uses the AdamW optimizer with fused CUDA kernels:
 
@@ -108,11 +108,11 @@ where $\hat{m}_t$ and $\hat{v}_t$ are bias-corrected first and second moment est
 - Precision: bfloat16 with TF32 tensor cores
 - Gradient checkpointing enabled
 
-## 3.2 Student Model: Horizon-Mobile
+## Student Model: Horizon-Mobile
 
 The student model uses MobileBERT as its encoder backbone with two classification heads sharing the pooled [CLS] representation.
 
-### 3.2.1 Architecture
+### Architecture
 
 $$\text{HorizonMobile}(x) = \begin{pmatrix} \text{softmax}(W_c \cdot h_{[\text{CLS}]} + b_c) \\ \text{softmax}(W_s \cdot h_{[\text{CLS}]} + b_s) \end{pmatrix}$$
 
@@ -131,11 +131,11 @@ where:
 | Max sequence length | 256 tokens |
 | Inference latency | <100ms (mobile) |
 
-# 4. Knowledge Distillation
+# Knowledge Distillation
 
 We transfer knowledge from the teacher (Horizon-Full) to the student (Horizon-Mobile) using a combination of soft label matching and hard label supervision.
 
-## 4.1 Soft Label Generation
+## Soft Label Generation
 
 Given a training example $x_i$, the teacher produces a probability distribution over categories:
 
@@ -143,7 +143,7 @@ $$q_i = \text{softmax}\left(\frac{z_i^T}{\tau}\right)$$
 
 where $z_i^T$ are the teacher's logits and $\tau$ is the temperature parameter. Higher temperatures produce softer distributions that convey more information about inter-class similarities.
 
-## 4.2 Distillation Loss
+## Distillation Loss
 
 The student is trained to minimize a weighted combination of two objectives:
 
@@ -174,7 +174,7 @@ $$\mathcal{L}_{\text{CE}}^{\text{sev}} = -\sum_{j=1}^{S} y_{ij} \log p_{ij}^{\te
 | Learning rate | $2 \times 10^{-5}$ | Fine-tuning regime for pre-trained encoder |
 | Steps | 5,000 | Convergence observed at ~4,000 steps |
 
-## 4.3 Gradient of the Distillation Loss
+## Gradient of the Distillation Loss
 
 For a single sample, the gradient with respect to student logit $z_k^S$ is:
 
@@ -182,11 +182,11 @@ $$\frac{\partial \mathcal{L}_{\text{KD}}}{\partial z_k^S} = \frac{1}{\tau}\left(
 
 This shows that the distillation gradient is proportional to the difference between the student's and teacher's softened predictions, providing a richer learning signal than one-hot labels alone.
 
-# 5. Explainability via Integrated Gradients
+# Explainability via Integrated Gradients
 
 To provide transparency in risk decisions, we compute token-level attribution scores using Integrated Gradients (IG).
 
-## 5.1 Method
+## Method
 
 For an input $x = (x_1, \ldots, x_n)$ and a baseline $x' = (\text{[PAD]}, \ldots, \text{[PAD]})$, the attribution for token $i$ is:
 
@@ -196,7 +196,7 @@ where $F$ is the model's output for the predicted class. In practice, we approxi
 
 $$\text{IG}_i(x) \approx (x_i - x'_i) \times \frac{1}{m} \sum_{k=1}^{m} \frac{\partial F\left(x' + \frac{k}{m}(x - x')\right)}{\partial x_i}$$
 
-## 5.2 Output Format
+## Output Format
 
 The top-$N$ tokens (default $N = 5$) by attribution magnitude are returned:
 
@@ -204,9 +204,9 @@ $$\text{attributions} = \text{top}_N\left(\frac{|\text{IG}_i|}{\max_j |\text{IG}
 
 Normalized to $[0, 1]$, these scores indicate which tokens most influenced the classification decision.
 
-# 6. Deployment Architecture
+# Deployment Architecture
 
-## 6.1 Export Pipeline
+## Export Pipeline
 
 The mobile model is exported through the following pipeline:
 
@@ -218,7 +218,7 @@ $$\hat{w} = \text{round}\left(\frac{w}{s}\right) \cdot s, \quad s = \frac{\max(|
 
 where $s$ is the per-channel scale factor, reducing model size by approximately 4$\times$ with minimal accuracy degradation.
 
-## 6.2 Inference Flow
+## Inference Flow
 
 ```
 Message Input
@@ -240,7 +240,7 @@ Message Input
            argmax -> severity level
 ```
 
-## 6.3 Platform Support
+## Platform Support
 
 | Platform | Runtime | Format |
 |----------|---------|--------|
@@ -249,9 +249,9 @@ Message Input
 | Server | PyTorch / vLLM | Llama 3.2 3B + LoRA adapter |
 | Desktop (LM Studio) | llama.cpp | GGUF Q4_K_M |
 
-# 7. Training Data
+# Training Data
 
-## 7.1 Synthetic Generation
+## Synthetic Generation
 
 Training data is generated using Amazon Bedrock (Claude) with category-specific prompts designed to produce realistic conversation patterns. Each conversation undergoes automated quality validation:
 
@@ -260,7 +260,7 @@ Training data is generated using Amazon Bedrock (Claude) with category-specific 
 - Length constraints (minimum conversation turns)
 - Diversity checks (no near-duplicate conversations)
 
-## 7.2 Dataset Statistics
+## Dataset Statistics
 
 | Category | Samples | Proportion |
 |----------|---------|------------|
@@ -276,7 +276,7 @@ Training data is generated using Amazon Bedrock (Claude) with category-specific 
 
 Training/evaluation split: 90%/10% (45,000 / 5,000 examples).
 
-## 7.3 Instruction Format
+## Instruction Format
 
 All training examples follow the Llama 3 chat template:
 
@@ -290,7 +290,7 @@ Analyze this conversation:
 {json_output}<|eot_id|>
 ```
 
-# 8. Privacy Guarantees
+# Privacy Guarantees
 
 Horizon's mobile deployment provides the following privacy properties:
 
@@ -299,7 +299,7 @@ Horizon's mobile deployment provides the following privacy properties:
 3. **Minimal footprint**: The 25MB model requires no cloud connectivity for inference.
 4. **Transparent decisions**: Token-level attributions allow users to understand why a risk was flagged without exposing content to reviewers.
 
-# 9. Limitations and Future Work
+# Limitations and Future Work
 
 - **500-step checkpoint quality**: Initial results use a quick training run; production deployment requires the full 15,000-step training
 - **Language coverage**: Currently English-only; multilingual support requires additional training data
@@ -307,7 +307,7 @@ Horizon's mobile deployment provides the following privacy properties:
 - **Temporal context**: Each message is classified independently; multi-turn pattern detection across sessions is not yet supported
 - **False positive calibration**: Severity thresholds require tuning against real-world deployment data
 
-# 10. Conclusion
+# Conclusion
 
 Horizon demonstrates that effective child safety risk detection can be deployed on-device without compromising user privacy. By combining a high-capacity teacher model with knowledge distillation into a lightweight mobile classifier, we achieve real-time inference with explainable outputs. The system's architecture enables deployment across iOS and Android without relying on cloud infrastructure, establishing a new paradigm for privacy-preserving content safety.
 
