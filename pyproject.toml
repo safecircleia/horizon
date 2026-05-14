@@ -56,7 +56,9 @@ dev = [
     "jupyter>=1.0.0",
 ]
 flash = [
-    "flash-attn>=4.0.0",
+    # FA2 from PyPI; for FA4 Hopper kernels install from source:
+    # pip install git+https://github.com/dao-ailab/flash-attention.git
+    "flash-attn>=2.6.0",
 ]
 export = [
     "onnxruntime>=1.19.0",
