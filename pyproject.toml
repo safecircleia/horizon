@@ -55,6 +55,9 @@ dev = [
     "pre-commit>=3.7.0",
     "jupyter>=1.0.0",
 ]
+flash = [
+    "flash-attn>=4.0.0",
+]
 export = [
     "onnxruntime>=1.19.0",
     "onnx>=1.16.0",
