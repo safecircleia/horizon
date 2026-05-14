@@ -58,8 +58,8 @@ dev = [
 te = [
     # NVIDIA Transformer Engine — cuDNN FusedAttention for H100/Hopper
     # Requires CUDA 12+ and cuDNN 9+
-    # Must install with: pip install --no-build-isolation "transformer-engine[pytorch]>=1.9.0"
-    "transformer-engine[pytorch]>=1.9.0",
+    # Must install with: pip install --no-build-isolation "transformer-engine[pytorch,core_cu12]"
+    "transformer-engine[pytorch,core_cu12]",
 ]
 export = [
     "onnxruntime>=1.19.0",
