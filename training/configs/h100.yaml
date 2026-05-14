@@ -4,7 +4,7 @@ model:
   base_model: "meta-llama/Llama-3.2-3B-Instruct"
   torch_dtype: "bfloat16"
   max_seq_length: 4096
-  attn_implementation: "flash_attention_2"  # FA2 is the transformers hook; install flash-attn-4 for Hopper-optimized kernels
+  attn_implementation: "flash_attention_4"  # FA4 Hopper kernels via dao-ailab/flash-attention v4; loader maps this to the FA2 transformers hook
 
 lora:
   rank: 256          # 2x L4 — richer task-specific subspace for better precision
@@ -46,7 +46,7 @@ training:
   optim: "adamw_torch_fused"
   dataloader_num_workers: 16   # ~60% of 26 cores dedicated to data loading
   dataloader_pin_memory: true  # 225GB RAM makes this essentially free
-  torch_compile: false         # incompatible with flash_attention_2 + PEFT (graph break on Tensor.item())
+  torch_compile: false         # keep off: graph breaks with PEFT Tensor.item() still present even with FA4
 
 data:
   train_file: "data/processed/train.jsonl"
