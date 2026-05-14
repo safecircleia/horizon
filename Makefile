@@ -127,6 +127,10 @@ resume:
 train-l4:
 	python -m training.scripts.train --config training/configs/l4.yaml
 
+## Train on H100 (80GB VRAM, Flash Attention 2, torch.compile, rank-256 LoRA)
+train-h100:
+	python -m training.scripts.train --config training/configs/h100.yaml
+
 ## Distill horizon-full into horizon-mobile
 ## Usage: make distill TEACHER=experiments/l4-xxx/final
 distill:

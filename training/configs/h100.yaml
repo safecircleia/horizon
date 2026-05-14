@@ -1,0 +1,69 @@
+# Horizon Training Configuration - H100 (80GB VRAM, 26 cores, 225GB RAM, 2.8TiB NVMe)
+
+model:
+  base_model: "meta-llama/Llama-3.2-3B-Instruct"
+  torch_dtype: "bfloat16"
+  max_seq_length: 4096
+  attn_implementation: "flash_attention_2"  # native H100 support, ~2x throughput
+
+lora:
+  rank: 256          # 2x L4 — richer task-specific subspace for better precision
+  alpha: 512
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+quantization:
+  load_in_4bit: false  # 80GB VRAM — Llama-3.2-3B in bf16 is ~6GB, no need to quantize
+
+training:
+  output_dir: "experiments/h100-{timestamp}"
+  max_steps: 25000     # 67% more than L4 — use the speed
+  per_device_train_batch_size: 32   # 4x L4 — H100 bandwidth handles it
+  per_device_eval_batch_size: 32
+  gradient_accumulation_steps: 1    # effective batch = 32, no accumulation overhead
+  gradient_checkpointing: false     # 80GB VRAM means no recomputation needed
+  learning_rate: 1.5e-4             # scaled down slightly for larger effective batch
+  lr_scheduler_type: "cosine_with_restarts"
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  logging_steps: 25
+  eval_steps: 500
+  save_steps: 500
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "tensorboard"
+  optim: "adamw_torch_fused"
+  dataloader_num_workers: 16   # ~60% of 26 cores dedicated to data loading
+  dataloader_pin_memory: true  # 225GB RAM makes this essentially free
+  torch_compile: true          # ~20-30% throughput gain on H100 via inductor
+
+data:
+  train_file: "data/processed/train.jsonl"
+  eval_file: "data/processed/eval.jsonl"
+  train_split: 0.9
+  max_seq_length: 4096  # 2x context — captures longer grooming/manipulation chains
+
+stages:
+  stage1:
+    name: "category_recognition"
+    steps: 8000
+    description: "Category recognition across all 7 risk types"
+  stage2:
+    name: "severity_calibration"
+    steps: 10000
+    description: "Severity calibration (none/low/medium/high/critical)"
+  stage3:
+    name: "false_positive_reduction"
+    steps: 7000
+    description: "False positive reduction on benign conversations"

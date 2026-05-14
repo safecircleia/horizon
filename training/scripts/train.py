@@ -149,7 +149,10 @@ def main():
         load_best_model_at_end=train_cfg["load_best_model_at_end"],
         metric_for_best_model=train_cfg["metric_for_best_model"],
         report_to=train_cfg.get("report_to", "tensorboard"),
-        dataloader_pin_memory=False,
+        dataloader_pin_memory=train_cfg.get("dataloader_pin_memory", False),
+        dataloader_num_workers=train_cfg.get("dataloader_num_workers", 0),
+        torch_compile=train_cfg.get("torch_compile", False),
+        optim=train_cfg.get("optim", "adamw_torch"),
     )
 
     data_collator = DataCollatorForLanguageModeling(
