@@ -120,7 +120,7 @@ def _(mo):
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
         hw_info = f"**GPU:** {gpu_name} ({gpu_mem:.1f} GB VRAM) | CUDA {torch.version.cuda} | PyTorch {torch.__version__}"
         if gpu_mem >= 70:
-            hw_info += "\n\n✅ H100 / A100 detected — use **H100 config** for rank-256 LoRA, Flash Attention 2, seq 4096, batch 32."
+            hw_info += "\n\n✅ H100 / A100 detected — use **H100 config** for rank-256 LoRA, Flash Attention 4 (Hopper-optimized), seq 4096, batch 32."
             hw_color = "success"
         elif gpu_mem >= 20:
             hw_info += "\n\n✅ High-VRAM GPU — use **L4 config** for full bfloat16 training."

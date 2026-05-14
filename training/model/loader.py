@@ -58,13 +58,26 @@ def load_model_and_tokenizer(
             dtype=model_dtype,
         )
         attn_impl = model_cfg.get("attn_implementation")
-        if attn_impl == "flash_attention_2":
+        if attn_impl in ("flash_attention_4", "flash_attention_2"):
             try:
-                import flash_attn  # noqa: F401
-                kwargs["attn_implementation"] = "flash_attention_2"
+                import flash_attn
+                from packaging.version import Version
+                fa_version = Version(flash_attn.__version__)
+                if fa_version >= Version("4.0.0"):
+                    # FA4 targets Hopper (H100/H200) — check transformers supports it
+                    try:
+                        kwargs["attn_implementation"] = "flash_attention_4"
+                        print(f"Using Flash Attention 4 (flash_attn {flash_attn.__version__})")
+                    except Exception:
+                        kwargs["attn_implementation"] = "flash_attention_2"
+                        print(f"Flash Attention 4 not supported by this transformers version, using FA2")
+                else:
+                    kwargs["attn_implementation"] = "flash_attention_2"
+                    print(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
             except ImportError:
                 print("Warning: flash-attn not installed, falling back to sdpa. "
-                      "Run: pip install flash-attn --no-build-isolation")
+                      "Install FA4: pip install flash-attn --no-build-isolation  "
+                      "(requires H100/H200 + CUDA 12+)")
                 kwargs["attn_implementation"] = "sdpa"
         elif attn_impl:
             kwargs["attn_implementation"] = attn_impl

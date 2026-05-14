@@ -4,7 +4,7 @@ model:
   base_model: "meta-llama/Llama-3.2-3B-Instruct"
   torch_dtype: "bfloat16"
   max_seq_length: 4096
-  attn_implementation: "flash_attention_2"  # native H100 support, ~2x throughput
+  attn_implementation: "flash_attention_4"  # FA4 targets Hopper (H100/H200), auto-falls back to FA2 or sdpa
 
 lora:
   rank: 256          # 2x L4 — richer task-specific subspace for better precision
