@@ -1,9 +1,7 @@
 """Model and tokenizer loading for QLoRA training."""
 
-import os
 from typing import Tuple, Optional
 import torch
-import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model, PeftModel
 
@@ -13,52 +11,21 @@ TORCH_DTYPE_MAP = {
     "float32": torch.float32,
 }
 
-_te_sdpa_patched = False
 
+def _enable_cudnn_attention() -> None:
+    """Route all F.scaled_dot_product_attention calls to the cuDNN backend.
 
-def _patch_sdpa_with_te_cudnn(num_heads: int, head_dim: int, dtype: torch.dtype) -> None:
-    """Replace F.scaled_dot_product_attention with TE cuDNN FusedAttention.
-
-    TE's DotProductAttention expects (seq, batch, heads, dim) — i.e. qkv_format="bshd"
-    with tensors shaped [b, s, h, d]. Transformers emits [b, h, s, d] (bhsd), so we
-    transpose in and out. NVTE_FLASH_ATTN=0 forces the cuDNN sub-backend (no flash-attn).
+    Disables flash and math backends so PyTorch selects cuDNN SDP exclusively.
+    Requires PyTorch 2.5+ and a cuDNN-enabled build (cudnn_sdp_enabled() == True).
     """
-    global _te_sdpa_patched
-    if _te_sdpa_patched:
+    if not torch.backends.cuda.cudnn_sdp_enabled():
+        print("Warning: cuDNN SDP not available in this PyTorch build; falling back to default sdpa.")
         return
-
-    try:
-        import transformer_engine.pytorch as te
-    except ImportError:
-        print("Warning: transformer-engine not installed; falling back to sdpa. "
-              "Install: pip install transformer-engine")
-        return
-
-    # Disable flash-attn inside TE so it always routes to cuDNN FusedAttention
-    os.environ.setdefault("NVTE_FLASH_ATTN", "0")
-
-    dpa = te.DotProductAttention(
-        num_attention_heads=num_heads,
-        kv_channels=head_dim,
-        attention_dropout=0.0,
-        attn_mask_type="causal",
-        qkv_format="bshd",
-    ).to(dtype=dtype, device="cuda")
-
-    _orig_sdpa = F.scaled_dot_product_attention
-
-    def _te_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, **kwargs):
-        # transformers passes [b, h, s, d] — transpose to [b, s, h, d] for TE
-        q = query.transpose(1, 2).contiguous()
-        k = key.transpose(1, 2).contiguous()
-        v = value.transpose(1, 2).contiguous()
-        out = dpa(q, k, v)
-        # transpose back to [b, h, s, d]
-        return out.transpose(1, 2).contiguous()
-
-    F.scaled_dot_product_attention = _te_sdpa
-    _te_sdpa_patched = True
-    print("TE cuDNN FusedAttention active (NVTE_FLASH_ATTN=0, sub-backend 1).")
+    torch.backends.cuda.enable_flash_sdp(False)
+    torch.backends.cuda.enable_mem_efficient_sdp(False)
+    torch.backends.cuda.enable_math_sdp(False)
+    torch.backends.cuda.enable_cudnn_sdp(True)
+    print("PyTorch cuDNN attention active (flash/math/mem-efficient sdp disabled).")
 
 
 def load_model_and_tokenizer(
@@ -101,19 +68,15 @@ def load_model_and_tokenizer(
         )
         model = prepare_model_for_kbit_training(model)
     elif torch.cuda.is_available():
-        load_kwargs = dict(
+        model = AutoModelForCausalLM.from_pretrained(
+            model_cfg["base_model"],
             device_map="cuda:0",
             trust_remote_code=True,
             dtype=model_dtype,
-            # Always load with sdpa; TE patches F.scaled_dot_product_attention directly
             attn_implementation="sdpa",
         )
-        model = AutoModelForCausalLM.from_pretrained(model_cfg["base_model"], **load_kwargs)
-
         if attn_impl == "cudnn_attention":
-            num_heads = model.config.num_attention_heads
-            head_dim = model.config.hidden_size // num_heads
-            _patch_sdpa_with_te_cudnn(num_heads, head_dim, model_dtype)
+            _enable_cudnn_attention()
     else:
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
