@@ -21,12 +21,14 @@ def _(mo):
 def _():
     import os
     import sys
-    import json
     import subprocess
     from pathlib import Path
 
-    # Add project root to path
-    ROOT = Path("..").resolve()
+    ROOT = Path("/home/ubuntu/horizon").resolve()
+
+    if not (ROOT / "training").exists():
+        raise RuntimeError(f"Project root not found at {ROOT} — update ROOT in this cell.")
+
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
@@ -34,10 +36,36 @@ def _():
     from dotenv import load_dotenv
     load_dotenv()
 
-    print(f"Project root: {ROOT}")
-    print(f"HF_TOKEN set: {'yes' if os.getenv('HF_TOKEN') else 'NO — set in .env'}")
-    print(f"BEDROCK_API_KEY set: {'yes' if os.getenv('BEDROCK_API_KEY') else 'NO — set in .env'}")
-    return Path, ROOT, json, os, subprocess, sys
+    print(f"Project root:    {ROOT}")
+    print(f"data/raw exists: {(ROOT / 'data' / 'raw').exists()}")
+    print(f"HF_TOKEN set:    {'yes' if os.getenv('HF_TOKEN') else 'NO — set in .env'}")
+    print(f"BEDROCK_API_KEY: {'yes' if os.getenv('BEDROCK_API_KEY') else 'NO — set in .env'}")
+    return Path, ROOT, os, subprocess, sys
+
+
+@app.cell
+def _(ROOT, mo, subprocess):
+    def stream(cmd):
+        """Run a command and stream stdout+stderr live into the cell output."""
+        mo.output.append(mo.md(f"```\n$ {' '.join(str(c) for c in cmd)}\n```"))
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=ROOT,
+        ) as proc:
+            for line in proc.stdout:
+                mo.output.append(mo.plain_text(line.rstrip()))
+            proc.wait()
+        if proc.returncode != 0:
+            mo.output.append(mo.callout(
+                mo.md(f"❌ Exited with code {proc.returncode}"), kind="danger"
+            ))
+        else:
+            mo.output.append(mo.callout(mo.md("✅ Done"), kind="success"))
+        return proc.returncode
+    return (stream,)
 
 
 @app.cell
@@ -54,13 +82,12 @@ def _(mo):
     if has_cuda:
         gpu_name = torch.cuda.get_device_name(0)
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
-        hw_info = f"**GPU detected:** {gpu_name} ({gpu_mem:.1f} GB VRAM)"
+        hw_info = f"**GPU:** {gpu_name} ({gpu_mem:.1f} GB VRAM) | CUDA {torch.version.cuda} | PyTorch {torch.__version__}"
         if gpu_mem >= 70:
-            hw_info += ("\n\n✅ H100 / A100 detected — use **H100 config** for rank-256 LoRA, "
-                        "Flash Attention 2, 4096 seq length, and batch size 32.")
+            hw_info += "\n\n✅ H100 / A100 detected — use **H100 config** for rank-256 LoRA, Flash Attention 2, seq 4096, batch 32."
             hw_color = "success"
         elif gpu_mem >= 20:
-            hw_info += "\n\n✅ High-VRAM GPU detected — use **L4 config** for full bfloat16 training (no 4-bit needed)."
+            hw_info += "\n\n✅ High-VRAM GPU — use **L4 config** for full bfloat16 training."
             hw_color = "success"
         else:
             hw_info += f"\n\n⚠️ {gpu_mem:.1f} GB VRAM — use **Quick** or **Base** config with 4-bit quantization."
@@ -92,14 +119,17 @@ def _(ROOT, mo):
         if f.exists():
             count = sum(1 for line in open(f) if line.strip())
             size_mb = f.stat().st_size / 1e6
-            stats.append({"Category": cat, "Count": count, "Size (MB)": f"{size_mb:.1f}"})
+            stats.append({"Category": cat, "Count": count, "Size (MB)": f"{size_mb:.1f}", "Status": "✓"})
             total += count
         else:
-            stats.append({"Category": cat, "Count": 0, "Size (MB)": "—"})
+            stats.append({"Category": cat, "Count": 0, "Size (MB)": "—", "Status": "missing"})
 
-    stats.append({"Category": "TOTAL", "Count": total, "Size (MB)": ""})
+    stats.append({"Category": "TOTAL", "Count": total, "Size (MB)": "", "Status": ""})
 
-    mo.ui.table(stats, label=f"Raw dataset — {total:,} conversations")
+    mo.vstack([
+        mo.callout(mo.md(f"Scanning `{raw_dir}`"), kind="info"),
+        mo.ui.table(stats, label=f"Raw dataset — {total:,} conversations"),
+    ])
     return categories, raw_dir, stats, total
 
 
@@ -131,18 +161,9 @@ def _(mo):
 
 
 @app.cell
-def _(download_split, mo, run_download_btn, subprocess):
+def _(download_split, mo, run_download_btn, stream):
     mo.stop(not run_download_btn.value)
-
-    _result = subprocess.run(
-        ["python", "data/scripts/download_from_hub.py", "--split", download_split.value],
-        capture_output=True, text=True
-    )
-
-    if _result.returncode == 0:
-        mo.callout(mo.md(f"✅ Download complete\n```\n{_result.stdout[-2000:]}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Download failed\n```\n{_result.stderr[-2000:]}\n```"), kind="danger")
+    stream(["python", "data/scripts/download_from_hub.py", "--split", download_split.value])
     return
 
 
@@ -153,38 +174,29 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
-    processed_dir = "data/processed"
-    split_ratio = mo.ui.slider(0.8, 0.95, value=0.9, step=0.05, label="Train/eval split")
-    seed = mo.ui.number(value=42, label="Random seed")
-    mo.vstack([
-        mo.md("Configure preprocessing parameters:"),
-        split_ratio,
-        seed,
-    ])
-    return processed_dir, seed, split_ratio
-
-
-@app.cell
-def _(mo, processed_dir, seed, split_ratio):
-    from pathlib import Path as _Path
-
-    _train = _Path(processed_dir) / "train.jsonl"
-    _eval = _Path(processed_dir) / "eval.jsonl"
+def _(ROOT, mo):
+    _train = ROOT / "data" / "processed" / "train.jsonl"
+    _eval  = ROOT / "data" / "processed" / "eval.jsonl"
 
     _train_count = sum(1 for l in open(_train) if l.strip()) if _train.exists() else 0
-    _eval_count = sum(1 for l in open(_eval) if l.strip()) if _eval.exists() else 0
+    _eval_count  = sum(1 for l in open(_eval)  if l.strip()) if _eval.exists()  else 0
 
     if _train_count > 0:
-        _status = mo.callout(
+        mo.callout(
             mo.md(f"✅ Preprocessed data found: **{_train_count:,} train** / **{_eval_count:,} eval**"),
             kind="success"
         )
     else:
-        _status = mo.callout(mo.md("⚠️ No preprocessed data found. Run preprocessing below."), kind="warn")
-
-    _status
+        mo.callout(mo.md("⚠️ No preprocessed data found. Run preprocessing below."), kind="warn")
     return
+
+
+@app.cell
+def _(mo):
+    split_ratio = mo.ui.slider(0.8, 0.95, value=0.9, step=0.05, label="Train/eval split")
+    seed = mo.ui.number(value=42, label="Random seed")
+    mo.vstack([split_ratio, seed])
+    return seed, split_ratio
 
 
 @app.cell
@@ -195,22 +207,13 @@ def _(mo):
 
 
 @app.cell
-def _(mo, processed_dir, run_preprocess_btn, seed, split_ratio, subprocess):
+def _(mo, run_preprocess_btn, seed, split_ratio, stream):
     mo.stop(not run_preprocess_btn.value)
-
-    _result = subprocess.run(
-        ["python", "-m", "training.scripts.preprocess",
-         "--input", "data/raw",
-         "--output", processed_dir,
-         "--split", str(split_ratio.value),
-         "--seed", str(int(seed.value))],
-        capture_output=True, text=True
-    )
-
-    if _result.returncode == 0:
-        mo.callout(mo.md(f"✅ Preprocessing complete\n```\n{_result.stdout}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Error\n```\n{_result.stderr}\n```"), kind="danger")
+    stream(["python", "-m", "training.scripts.preprocess",
+            "--input", "data/raw",
+            "--output", "data/processed",
+            "--split", str(split_ratio.value),
+            "--seed", str(int(seed.value))])
     return
 
 
@@ -230,10 +233,13 @@ def _(mo):
             "H100 (25,000 steps, rank-256 LoRA, FA2, batch 32)": "training/configs/h100.yaml",
             "Mobile distillation (MobileBERT)": "training/configs/mobile.yaml",
         },
-        value="Quick (500 steps, for testing)",
+        value="H100 (25,000 steps, rank-256 LoRA, FA2, batch 32)",
         label="Training config",
     )
-    resume_path = mo.ui.text(placeholder="experiments/run-xxx/checkpoints/step-500 (optional)", label="Resume from checkpoint")
+    resume_path = mo.ui.text(
+        placeholder="experiments/run-xxx/checkpoints/step-500 (optional)",
+        label="Resume from checkpoint",
+    )
     mo.vstack([config_choice, resume_path])
     return config_choice, resume_path
 
@@ -246,21 +252,12 @@ def _(mo):
 
 
 @app.cell
-def _(config_choice, mo, resume_path, run_train_btn, subprocess):
+def _(config_choice, mo, resume_path, run_train_btn, stream):
     mo.stop(not run_train_btn.value)
-
     _cmd = ["python", "-m", "training.scripts.train", "--config", config_choice.value]
     if resume_path.value.strip():
         _cmd += ["--resume", resume_path.value.strip()]
-
-    mo.callout(mo.md(f"Running: `{' '.join(_cmd)}`\n\n⏳ This may take a while — check your terminal for live progress."), kind="info")
-
-    _result = subprocess.run(_cmd, capture_output=True, text=True)
-
-    if _result.returncode == 0:
-        mo.callout(mo.md(f"✅ Training complete\n```\n{_result.stdout[-3000:]}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Training failed\n```\n{_result.stderr[-3000:]}\n```"), kind="danger")
+    stream(_cmd)
     return
 
 
@@ -271,15 +268,13 @@ def _(mo):
 
 
 @app.cell
-def _(Path, mo):
-    _runs = sorted(Path("experiments").glob("*/final"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []
+def _(ROOT, mo):
+    _runs = sorted((ROOT / "experiments").glob("*/final"),
+                   key=lambda p: p.stat().st_mtime, reverse=True) \
+            if (ROOT / "experiments").exists() else []
     _options = {str(p): str(p) for p in _runs} if _runs else {"No checkpoints found": ""}
-
     checkpoint_select = mo.ui.dropdown(options=_options, label="Select checkpoint")
-    mo.vstack([
-        mo.md("Choose a trained checkpoint to evaluate:"),
-        checkpoint_select,
-    ])
+    mo.vstack([mo.md("Choose a trained checkpoint to evaluate:"), checkpoint_select])
     return (checkpoint_select,)
 
 
@@ -291,22 +286,13 @@ def _(mo):
 
 
 @app.cell
-def _(checkpoint_select, mo, run_eval_btn, subprocess):
+def _(checkpoint_select, mo, run_eval_btn, stream):
     mo.stop(not run_eval_btn.value)
     mo.stop(not checkpoint_select.value)
-
-    _result = subprocess.run(
-        ["python", "-m", "evaluation.metrics.evaluate",
-         "--checkpoint", checkpoint_select.value,
-         "--test-set", "data/evaluation/test.jsonl",
-         "--max-samples", "200"],
-        capture_output=True, text=True
-    )
-
-    if _result.returncode == 0:
-        mo.callout(mo.md(f"✅ Evaluation complete\n```\n{_result.stdout}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Evaluation failed\n```\n{_result.stderr}\n```"), kind="danger")
+    stream(["python", "-m", "evaluation.metrics.evaluate",
+            "--checkpoint", checkpoint_select.value,
+            "--test-set", "data/evaluation/test.jsonl",
+            "--max-samples", "200"])
     return
 
 
@@ -317,8 +303,10 @@ def _(mo):
 
 
 @app.cell
-def _(Path, mo):
-    _runs = sorted(Path("experiments").glob("*/final"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []
+def _(ROOT, mo):
+    _runs = sorted((ROOT / "experiments").glob("*/final"),
+                   key=lambda p: p.stat().st_mtime, reverse=True) \
+            if (ROOT / "experiments").exists() else []
     _options = {str(p): str(p) for p in _runs} if _runs else {"No checkpoints found": ""}
     teacher_select = mo.ui.dropdown(options=_options, label="Teacher checkpoint (horizon-full)")
     mo.vstack([mo.md("Select the trained `horizon-full` checkpoint to distill from:"), teacher_select])
@@ -333,31 +321,26 @@ def _(mo):
 
 
 @app.cell
-def _(mo, run_distill_btn, subprocess, teacher_select):
+def _(mo, run_distill_btn, stream, teacher_select):
     mo.stop(not run_distill_btn.value)
     mo.stop(not teacher_select.value)
-    _result = subprocess.run(
-        ["python", "-m", "training.scripts.distill",
-         "--teacher", teacher_select.value,
-         "--config", "training/configs/mobile.yaml"],
-        capture_output=True, text=True
-    )
-    if _result.returncode == 0:
-        mo.callout(mo.md(f"✅ Distillation complete\n```\n{_result.stdout[-3000:]}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Distillation failed\n```\n{_result.stderr[-3000:]}\n```"), kind="danger")
+    stream(["python", "-m", "training.scripts.distill",
+            "--teacher", teacher_select.value,
+            "--config", "training/configs/mobile.yaml"])
     return
 
 
 @app.cell
 def _(mo):
-    mo.md("## 📦 Step 4.5: Export Mobile Model to ONNX")
+    mo.md("## 📦 Step 4: Export Mobile Model to ONNX")
     return
 
 
 @app.cell
-def _(Path, mo):
-    _mobile_runs = sorted(Path("experiments").glob("mobile-*/final"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []
+def _(ROOT, mo):
+    _mobile_runs = sorted((ROOT / "experiments").glob("mobile-*/final"),
+                          key=lambda p: p.stat().st_mtime, reverse=True) \
+                   if (ROOT / "experiments").exists() else []
     _options = {str(p): str(p) for p in _mobile_runs} if _mobile_runs else {"No mobile checkpoints found": ""}
     mobile_checkpoint_select = mo.ui.dropdown(options=_options, label="Mobile checkpoint to export")
     mo.vstack([mo.md("Select a trained mobile checkpoint to export:"), mobile_checkpoint_select])
@@ -372,23 +355,18 @@ def _(mo):
 
 
 @app.cell
-def _(mo, mobile_checkpoint_select, run_export_btn, subprocess):
+def _(ROOT, mo, mobile_checkpoint_select, run_export_btn, stream):
     mo.stop(not run_export_btn.value)
     mo.stop(not mobile_checkpoint_select.value)
-    _result = subprocess.run(
-        ["python", "-m", "training.scripts.export_onnx",
-         "--checkpoint", mobile_checkpoint_select.value,
-         "--output", "models/mobile",
-         "--quantize"],
-        capture_output=True, text=True
-    )
-    if _result.returncode == 0:
-        from pathlib import Path as _Path
-        _sizes = {p.name: f"{p.stat().st_size / 1e6:.1f} MB" for p in _Path("models/mobile").glob("*.onnx")} if _Path("models/mobile").exists() else {}
-        _size_info = "\n".join(f"- `{k}`: {v}" for k, v in _sizes.items()) or "No ONNX files found"
-        mo.callout(mo.md(f"✅ Export complete\n\n**Output files:**\n{_size_info}\n\n```\n{_result.stdout[-2000:]}\n```"), kind="success")
-    else:
-        mo.callout(mo.md(f"❌ Export failed\n```\n{_result.stderr[-3000:]}\n```"), kind="danger")
+    stream(["python", "-m", "training.scripts.export_onnx",
+            "--checkpoint", mobile_checkpoint_select.value,
+            "--output", "models/mobile",
+            "--quantize"])
+    _sizes = {p.name: f"{p.stat().st_size / 1e6:.1f} MB"
+              for p in (ROOT / "models/mobile").glob("*.onnx")} \
+             if (ROOT / "models/mobile").exists() else {}
+    if _sizes:
+        mo.output.append(mo.md("\n**Output files:**\n" + "\n".join(f"- `{k}`: {v}" for k, v in _sizes.items())))
     return
 
 
@@ -399,22 +377,26 @@ def _(mo):
 
 
 @app.cell
-def _(Path, json, mo):
+def _(ROOT, mo):
+    import yaml as _yaml
+
     _rows = []
-    for _run in sorted(Path("experiments").glob("*/training_config.yaml"), key=lambda p: p.stat().st_mtime, reverse=True) if Path("experiments").exists() else []:
-        import yaml as _yaml
-        try:
-            _cfg = _yaml.safe_load(open(_run))
-            _rows.append({
-                "Run": _run.parent.name,
-                "Steps": _cfg.get("training", {}).get("max_steps", "?"),
-                "LR": _cfg.get("training", {}).get("learning_rate", "?"),
-                "Batch": _cfg.get("training", {}).get("per_device_train_batch_size", "?"),
-                "LoRA rank": _cfg.get("lora", {}).get("rank", "?"),
-                "Seq len": _cfg.get("data", {}).get("max_seq_length", "?"),
-            })
-        except Exception:
-            pass
+    if (ROOT / "experiments").exists():
+        for _run in sorted((ROOT / "experiments").glob("*/training_config.yaml"),
+                           key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                _cfg = _yaml.safe_load(open(_run))
+                _rows.append({
+                    "Run": _run.parent.name,
+                    "Steps": _cfg.get("training", {}).get("max_steps", "?"),
+                    "LR": _cfg.get("training", {}).get("learning_rate", "?"),
+                    "Batch": _cfg.get("training", {}).get("per_device_train_batch_size", "?"),
+                    "LoRA rank": _cfg.get("lora", {}).get("rank", "?"),
+                    "Seq len": _cfg.get("data", {}).get("max_seq_length", "?"),
+                    "4-bit": _cfg.get("quantization", {}).get("load_in_4bit", "?"),
+                })
+            except Exception:
+                pass
 
     if _rows:
         mo.ui.table(_rows, label="Past training runs")
