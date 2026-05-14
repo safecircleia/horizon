@@ -63,11 +63,14 @@ def load_model_and_tokenizer(
                 import flash_attn
                 version = getattr(flash_attn, "__version__", "unknown")
                 if attn_impl == "flash_attention_4" and not version.startswith("4"):
-                    print(f"Warning: flash-attn {version} installed; FA4 Hopper kernels require v4.x.")
+                    print(f"Warning: flash-attn {version} installed; FA4 Hopper kernels require v4.x "
+                          f"(pip install git+https://github.com/dao-ailab/flash-attention.git). "
+                          f"Falling back to sdpa.")
+                    kwargs["attn_implementation"] = "sdpa"
                 else:
                     print(f"Flash Attention {version} active.")
-                # FA4 exposes the same flash_attn_func API as FA2 — transformers picks it up automatically
-                kwargs["attn_implementation"] = "flash_attention_2"
+                    # FA4 exposes the same flash_attn_func API as FA2 — transformers picks it up automatically
+                    kwargs["attn_implementation"] = "flash_attention_2"
             except ImportError:
                 print("Warning: flash-attn not installed, falling back to sdpa.")
                 kwargs["attn_implementation"] = "sdpa"
