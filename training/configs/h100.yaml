@@ -25,10 +25,10 @@ quantization:
 training:
   output_dir: "experiments/h100-{timestamp}"
   max_steps: 25000     # 67% more than L4 — use the speed
-  per_device_train_batch_size: 32   # 4x L4 — H100 bandwidth handles it
-  per_device_eval_batch_size: 32
-  gradient_accumulation_steps: 1    # effective batch = 32, no accumulation overhead
-  gradient_checkpointing: false     # 80GB VRAM means no recomputation needed
+  per_device_train_batch_size: 8    # rank-256 LoRA + seq 4096 fills VRAM fast
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 4    # effective batch = 32
+  gradient_checkpointing: true      # seq 4096 activations need recomputation to fit
   learning_rate: 1.5e-4             # scaled down slightly for larger effective batch
   lr_scheduler_type: "cosine_with_restarts"
   warmup_steps: 500
