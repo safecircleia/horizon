@@ -45,9 +45,22 @@ def _():
 
 @app.cell
 def _(ROOT, mo, subprocess):
-    def stream(cmd):
-        """Run a command and stream stdout+stderr live into the cell output."""
-        mo.output.append(mo.md(f"```\n$ {' '.join(str(c) for c in cmd)}\n```"))
+    import datetime
+
+    def stream(cmd, log_name=None):
+        """Run a command, stream output live, and persist it to a log file."""
+        cmd_str = " ".join(str(c) for c in cmd)
+        mo.output.append(mo.md(f"```\n$ {cmd_str}\n```"))
+
+        # Persist output to a log file so it survives cell re-runs
+        logs_dir = ROOT / "logs"
+        logs_dir.mkdir(exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        label = log_name or cmd[2] if len(cmd) > 2 else cmd[0]
+        label = str(label).replace("/", "_").replace(".", "_")
+        log_path = logs_dir / f"{ts}-{label}.log"
+
+        lines = [f"$ {cmd_str}\n"]
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -57,15 +70,23 @@ def _(ROOT, mo, subprocess):
         ) as proc:
             for line in proc.stdout:
                 mo.output.append(mo.plain_text(line.rstrip()))
+                lines.append(line)
             proc.wait()
+
+        log_path.write_text("".join(lines))
+
         if proc.returncode != 0:
             mo.output.append(mo.callout(
-                mo.md(f"❌ Exited with code {proc.returncode}"), kind="danger"
+                mo.md(f"❌ Exited with code {proc.returncode} — log saved to `{log_path.relative_to(ROOT)}`"),
+                kind="danger"
             ))
         else:
-            mo.output.append(mo.callout(mo.md("✅ Done"), kind="success"))
+            mo.output.append(mo.callout(
+                mo.md(f"✅ Done — log saved to `{log_path.relative_to(ROOT)}`"),
+                kind="success"
+            ))
         return proc.returncode
-    return (stream,)
+    return datetime, stream
 
 
 @app.cell
@@ -402,6 +423,37 @@ def _(ROOT, mo):
         mo.ui.table(_rows, label="Past training runs")
     else:
         mo.callout(mo.md("No experiments yet. Run training to see history here."), kind="info")
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("## 📜 Log Viewer")
+    return
+
+
+@app.cell
+def _(ROOT, mo):
+    _logs_dir = ROOT / "logs"
+    _logs = sorted(_logs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True) \
+            if _logs_dir.exists() else []
+    _options = {p.name: str(p) for p in _logs} if _logs else {"No logs yet": ""}
+    log_select = mo.ui.dropdown(options=_options, label="Select log file")
+    mo.vstack([mo.md("Browse persisted output from past runs:"), log_select])
+    return (log_select,)
+
+
+@app.cell
+def _(ROOT, log_select, mo):
+    from pathlib import Path as _Path
+    if log_select.value and _Path(log_select.value).exists():
+        _content = _Path(log_select.value).read_text()
+        mo.vstack([
+            mo.md(f"**{_Path(log_select.value).name}**"),
+            mo.code(_content[-10000:], language="bash"),
+        ])
+    else:
+        mo.callout(mo.md("No log selected or log file not found."), kind="info")
     return
 
 
