@@ -62,7 +62,9 @@ def load_model_and_tokenizer(
             try:
                 import flash_attn
                 from packaging.version import Version
-                fa_version = Version(flash_attn.__version__)
+                fa_ver_str = getattr(flash_attn, "__version__", None) or \
+                             getattr(flash_attn, "flash_attn_version", "0.0.0")
+                fa_version = Version(fa_ver_str)
                 if fa_version >= Version("4.0.0"):
                     # FA4 targets Hopper (H100/H200) — check transformers supports it
                     try:
