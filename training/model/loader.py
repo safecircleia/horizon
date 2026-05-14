@@ -2,8 +2,8 @@
 
 from typing import Tuple, Optional
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, get_peft_model, PeftModel
 
 TORCH_DTYPE_MAP = {
     "bfloat16": torch.bfloat16,
@@ -31,6 +31,8 @@ def load_model_and_tokenizer(
     use_4bit = quant_cfg.get("load_in_4bit", True)
 
     if use_4bit:
+        from transformers import BitsAndBytesConfig
+        from peft import prepare_model_for_kbit_training
         compute_dtype = TORCH_DTYPE_MAP[quant_cfg["bnb_4bit_compute_dtype"]]
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
