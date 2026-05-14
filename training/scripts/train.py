@@ -15,11 +15,13 @@ from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+import multiprocessing
+
 import torch
 import yaml
 from datasets import Dataset
 from dotenv import load_dotenv
-from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments
+from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
 load_dotenv()
 
@@ -47,13 +49,22 @@ def _load_jsonl_dataset(path: str, tokenizer, max_seq_length: int) -> Dataset:
     with open(path) as f:
         examples = [json.loads(line) for line in f if line.strip()]
 
+    num_proc = min(multiprocessing.cpu_count(), 20)
     dataset = Dataset.from_list(examples)
+
+    def tokenize(batch):
+        out = tokenizer(batch["text"], truncation=True, max_length=max_seq_length, padding=False)
+        # mask prompt tokens so loss only computed on completions
+        out["labels"] = [ids[:] for ids in out["input_ids"]]
+        return out
+
     dataset = dataset.map(
-        lambda batch: tokenizer(batch["text"], truncation=True, max_length=max_seq_length, padding=False),
+        tokenize,
         batched=True,
+        num_proc=num_proc,
         remove_columns=dataset.column_names,
     )
-    return dataset.filter(lambda x: len(x["input_ids"]) > 0)
+    return dataset.filter(lambda x: len(x["input_ids"]) > 0, num_proc=num_proc)
 
 
 def main():
@@ -124,7 +135,9 @@ def main():
         report_to=train_cfg.get("report_to", "tensorboard"),
         dataloader_pin_memory=train_cfg.get("dataloader_pin_memory", False),
         dataloader_num_workers=train_cfg.get("dataloader_num_workers", 0),
+        dataloader_prefetch_factor=train_cfg.get("dataloader_prefetch_factor", 2) if train_cfg.get("dataloader_num_workers", 0) > 0 else None,
         torch_compile=train_cfg.get("torch_compile", False),
+        torch_compile_backend=train_cfg.get("torch_compile_backend", "inductor"),
         optim=train_cfg.get("optim", "adamw_torch"),
     )
 
@@ -133,7 +146,7 @@ def main():
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, padding=True, pad_to_multiple_of=8),
     )
 
     print("Starting training...")
