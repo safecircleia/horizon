@@ -60,26 +60,20 @@ def load_model_and_tokenizer(
         attn_impl = model_cfg.get("attn_implementation")
         if attn_impl in ("flash_attention_4", "flash_attention_2"):
             try:
-                import flash_attn
-                from packaging.version import Version
-                fa_ver_str = getattr(flash_attn, "__version__", None) or \
-                             getattr(flash_attn, "flash_attn_version", "0.0.0")
-                fa_version = Version(fa_ver_str)
-                if fa_version >= Version("4.0.0"):
-                    # FA4 targets Hopper (H100/H200) — check transformers supports it
-                    try:
-                        kwargs["attn_implementation"] = "flash_attention_4"
-                        print(f"Using Flash Attention 4 (flash_attn {flash_attn.__version__})")
-                    except Exception:
-                        kwargs["attn_implementation"] = "flash_attention_2"
-                        print(f"Flash Attention 4 not supported by this transformers version, using FA2")
-                else:
-                    kwargs["attn_implementation"] = "flash_attention_2"
-                    print(f"Using Flash Attention 2 (flash_attn {flash_attn.__version__})")
+                import flash_attn  # noqa: F401
+                import importlib.metadata
+                try:
+                    fa_ver = importlib.metadata.version("flash-attn")
+                except importlib.metadata.PackageNotFoundError:
+                    fa_ver = "unknown"
+                # FA4 (flash-attn-4) uses flash_attn.cute and doesn't integrate with
+                # transformers' attn_implementation — FA2 is the correct transformers hook.
+                # FA4 kernels are used automatically on Hopper when flash-attn-4 is installed.
+                kwargs["attn_implementation"] = "flash_attention_2"
+                print(f"Using Flash Attention 2 via transformers (flash-attn {fa_ver})")
             except ImportError:
                 print("Warning: flash-attn not installed, falling back to sdpa. "
-                      "Install FA4: pip install flash-attn --no-build-isolation  "
-                      "(requires H100/H200 + CUDA 12+)")
+                      "Install: pip install flash-attn --no-build-isolation")
                 kwargs["attn_implementation"] = "sdpa"
         elif attn_impl:
             kwargs["attn_implementation"] = attn_impl
