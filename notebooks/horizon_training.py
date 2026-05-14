@@ -55,7 +55,11 @@ def _(mo):
         gpu_name = torch.cuda.get_device_name(0)
         gpu_mem = torch.cuda.get_device_properties(0).total_memory / 1e9
         hw_info = f"**GPU detected:** {gpu_name} ({gpu_mem:.1f} GB VRAM)"
-        if gpu_mem >= 20:
+        if gpu_mem >= 70:
+            hw_info += ("\n\n✅ H100 / A100 detected — use **H100 config** for rank-256 LoRA, "
+                        "Flash Attention 2, 4096 seq length, and batch size 32.")
+            hw_color = "success"
+        elif gpu_mem >= 20:
             hw_info += "\n\n✅ High-VRAM GPU detected — use **L4 config** for full bfloat16 training (no 4-bit needed)."
             hw_color = "success"
         else:
@@ -223,6 +227,7 @@ def _(mo):
             "Quick (500 steps, for testing)": "training/configs/quick.yaml",
             "Base (10,000 steps, production)": "training/configs/base.yaml",
             "L4 GPU (15,000 steps, full bfloat16)": "training/configs/l4.yaml",
+            "H100 (25,000 steps, rank-256 LoRA, FA2, batch 32)": "training/configs/h100.yaml",
             "Mobile distillation (MobileBERT)": "training/configs/mobile.yaml",
         },
         value="Quick (500 steps, for testing)",
@@ -405,6 +410,8 @@ def _(Path, json, mo):
                 "Steps": _cfg.get("training", {}).get("max_steps", "?"),
                 "LR": _cfg.get("training", {}).get("learning_rate", "?"),
                 "Batch": _cfg.get("training", {}).get("per_device_train_batch_size", "?"),
+                "LoRA rank": _cfg.get("lora", {}).get("rank", "?"),
+                "Seq len": _cfg.get("data", {}).get("max_seq_length", "?"),
             })
         except Exception:
             pass
