@@ -1,4 +1,4 @@
-# Horizon Training Configuration - L4 GPU (24GB VRAM)
+# Horizon Training Configuration — L4 (24GB VRAM)
 
 model:
   base_model: "meta-llama/Llama-3.2-3B-Instruct"

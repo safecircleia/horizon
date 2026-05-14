@@ -12,26 +12,23 @@ TORCH_DTYPE_MAP = {
 }
 
 
-def _enable_cudnn_attention() -> None:
-    """Route all F.scaled_dot_product_attention calls to the cuDNN backend.
+def _configure_attention(attn_impl: str) -> str:
+    """Configure the attention backend and return the transformers attn_implementation value."""
+    if attn_impl == "cudnn_attention":
+        if not torch.backends.cuda.cudnn_sdp_enabled():
+            raise RuntimeError(
+                "attn_implementation=cudnn_attention requires PyTorch 2.5+ built with cuDNN SDP support."
+            )
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(False)
+        torch.backends.cuda.enable_cudnn_sdp(True)
+        return "sdpa"
+    return attn_impl
 
-    Disables flash and math backends so PyTorch selects cuDNN SDP exclusively.
-    Requires PyTorch 2.5+ and a cuDNN-enabled build (cudnn_sdp_enabled() == True).
-    """
-    if not torch.backends.cuda.cudnn_sdp_enabled():
-        print("Warning: cuDNN SDP not available in this PyTorch build; falling back to default sdpa.")
-        return
-    torch.backends.cuda.enable_flash_sdp(False)
-    torch.backends.cuda.enable_mem_efficient_sdp(False)
-    torch.backends.cuda.enable_math_sdp(False)
-    torch.backends.cuda.enable_cudnn_sdp(True)
-    print("PyTorch cuDNN attention active (flash/math/mem-efficient sdp disabled).")
 
-
-def load_model_and_tokenizer(
-    config: dict,
-) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
-    """Load base model with QLoRA config ready for training."""
+def load_model_and_tokenizer(config: dict) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+    """Load base model and tokenizer, applying QLoRA and attention config."""
     model_cfg = config["model"]
     lora_cfg = config["lora"]
     quant_cfg = config["quantization"]
@@ -45,44 +42,40 @@ def load_model_and_tokenizer(
 
     model_dtype = TORCH_DTYPE_MAP[model_cfg["torch_dtype"]]
     use_4bit = quant_cfg.get("load_in_4bit", True)
-    attn_impl = model_cfg.get("attn_implementation")
 
     if use_4bit:
         from transformers import BitsAndBytesConfig
         from peft import prepare_model_for_kbit_training
-        compute_dtype = TORCH_DTYPE_MAP[quant_cfg["bnb_4bit_compute_dtype"]]
+
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=compute_dtype,
+            bnb_4bit_compute_dtype=TORCH_DTYPE_MAP[quant_cfg["bnb_4bit_compute_dtype"]],
             bnb_4bit_quant_type=quant_cfg["bnb_4bit_quant_type"],
             bnb_4bit_use_double_quant=quant_cfg["bnb_4bit_use_double_quant"],
-            llm_int8_enable_fp32_cpu_offload=quant_cfg.get("llm_int8_enable_fp32_cpu_offload", False),
         )
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
             quantization_config=bnb_config,
             device_map="auto",
             trust_remote_code=True,
-            dtype=model_dtype,
-            max_memory=quant_cfg.get("max_memory", None),
+            torch_dtype=model_dtype,
         )
         model = prepare_model_for_kbit_training(model)
     elif torch.cuda.is_available():
+        attn_impl = _configure_attention(model_cfg.get("attn_implementation", "sdpa"))
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
             device_map="cuda:0",
             trust_remote_code=True,
-            dtype=model_dtype,
-            attn_implementation="sdpa",
+            torch_dtype=model_dtype,
+            attn_implementation=attn_impl,
         )
-        if attn_impl == "cudnn_attention":
-            _enable_cudnn_attention()
     else:
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
             device_map="cpu",
             trust_remote_code=True,
-            dtype=model_dtype,
+            torch_dtype=model_dtype,
         )
 
     lora_config = LoraConfig(
@@ -93,7 +86,6 @@ def load_model_and_tokenizer(
         bias="none",
         task_type="CAUSAL_LM",
     )
-
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
@@ -115,7 +107,7 @@ def load_for_inference(
 
     model = AutoModelForCausalLM.from_pretrained(
         base,
-        dtype=torch.bfloat16,
+        torch_dtype=torch.bfloat16,
         device_map="auto",
     )
     model = PeftModel.from_pretrained(model, checkpoint_path)
