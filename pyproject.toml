@@ -55,10 +55,10 @@ dev = [
     "pre-commit>=3.7.0",
     "jupyter>=1.0.0",
 ]
-flash = [
-    # FA2 from PyPI; for FA4 Hopper kernels install from source:
-    # pip install git+https://github.com/dao-ailab/flash-attention.git
-    "flash-attn>=2.6.0",
+te = [
+    # NVIDIA Transformer Engine — cuDNN FusedAttention for H100/Hopper
+    # Requires CUDA 12+ and cuDNN 9+
+    "transformer-engine>=1.9.0",
 ]
 export = [
     "onnxruntime>=1.19.0",
