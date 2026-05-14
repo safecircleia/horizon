@@ -56,7 +56,15 @@ def load_model_and_tokenizer(
             dtype=model_dtype,
         )
         attn_impl = model_cfg.get("attn_implementation")
-        if attn_impl:
+        if attn_impl == "flash_attention_2":
+            try:
+                import flash_attn  # noqa: F401
+                kwargs["attn_implementation"] = "flash_attention_2"
+            except ImportError:
+                print("Warning: flash-attn not installed, falling back to sdpa. "
+                      "Run: pip install flash-attn --no-build-isolation")
+                kwargs["attn_implementation"] = "sdpa"
+        elif attn_impl:
             kwargs["attn_implementation"] = attn_impl
         model = AutoModelForCausalLM.from_pretrained(model_cfg["base_model"], **kwargs)
     else:

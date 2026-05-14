@@ -46,7 +46,7 @@ training:
   optim: "adamw_torch_fused"
   dataloader_num_workers: 16   # ~60% of 26 cores dedicated to data loading
   dataloader_pin_memory: true  # 225GB RAM makes this essentially free
-  torch_compile: true          # ~20-30% throughput gain on H100 via inductor
+  torch_compile: false         # incompatible with flash_attention_2 + PEFT (graph break on Tensor.item())
 
 data:
   train_file: "data/processed/train.jsonl"
