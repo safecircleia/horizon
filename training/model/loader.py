@@ -1,7 +1,9 @@
 """Model and tokenizer loading for QLoRA training."""
 
+import os
 from typing import Tuple, Optional
 import torch
+import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model, PeftModel
 
@@ -10,6 +12,53 @@ TORCH_DTYPE_MAP = {
     "float16": torch.float16,
     "float32": torch.float32,
 }
+
+_te_sdpa_patched = False
+
+
+def _patch_sdpa_with_te_cudnn(num_heads: int, head_dim: int, dtype: torch.dtype) -> None:
+    """Replace F.scaled_dot_product_attention with TE cuDNN FusedAttention.
+
+    TE's DotProductAttention expects (seq, batch, heads, dim) — i.e. qkv_format="bshd"
+    with tensors shaped [b, s, h, d]. Transformers emits [b, h, s, d] (bhsd), so we
+    transpose in and out. NVTE_FLASH_ATTN=0 forces the cuDNN sub-backend (no flash-attn).
+    """
+    global _te_sdpa_patched
+    if _te_sdpa_patched:
+        return
+
+    try:
+        import transformer_engine.pytorch as te
+    except ImportError:
+        print("Warning: transformer-engine not installed; falling back to sdpa. "
+              "Install: pip install transformer-engine")
+        return
+
+    # Disable flash-attn inside TE so it always routes to cuDNN FusedAttention
+    os.environ.setdefault("NVTE_FLASH_ATTN", "0")
+
+    dpa = te.DotProductAttention(
+        num_attention_heads=num_heads,
+        kv_channels=head_dim,
+        attention_dropout=0.0,
+        attn_mask_type="causal",
+        qkv_format="bshd",
+    ).to(dtype=dtype, device="cuda")
+
+    _orig_sdpa = F.scaled_dot_product_attention
+
+    def _te_sdpa(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, **kwargs):
+        # transformers passes [b, h, s, d] — transpose to [b, s, h, d] for TE
+        q = query.transpose(1, 2).contiguous()
+        k = key.transpose(1, 2).contiguous()
+        v = value.transpose(1, 2).contiguous()
+        out = dpa(q, k, v)
+        # transpose back to [b, h, s, d]
+        return out.transpose(1, 2).contiguous()
+
+    F.scaled_dot_product_attention = _te_sdpa
+    _te_sdpa_patched = True
+    print("TE cuDNN FusedAttention active (NVTE_FLASH_ATTN=0, sub-backend 1).")
 
 
 def load_model_and_tokenizer(
@@ -29,6 +78,7 @@ def load_model_and_tokenizer(
 
     model_dtype = TORCH_DTYPE_MAP[model_cfg["torch_dtype"]]
     use_4bit = quant_cfg.get("load_in_4bit", True)
+    attn_impl = model_cfg.get("attn_implementation")
 
     if use_4bit:
         from transformers import BitsAndBytesConfig
@@ -51,34 +101,20 @@ def load_model_and_tokenizer(
         )
         model = prepare_model_for_kbit_training(model)
     elif torch.cuda.is_available():
-        # Full precision GPU path (L4 / high-VRAM GPUs)
-        kwargs = dict(
+        load_kwargs = dict(
             device_map="cuda:0",
             trust_remote_code=True,
             dtype=model_dtype,
+            # Always load with sdpa; TE patches F.scaled_dot_product_attention directly
+            attn_implementation="sdpa",
         )
-        attn_impl = model_cfg.get("attn_implementation")
-        if attn_impl in ("flash_attention_4", "flash_attention_2"):
-            try:
-                import flash_attn
-                version = getattr(flash_attn, "__version__", "unknown")
-                if attn_impl == "flash_attention_4" and not version.startswith("4"):
-                    print(f"Warning: flash-attn {version} installed; FA4 Hopper kernels require v4.x "
-                          f"(pip install git+https://github.com/dao-ailab/flash-attention.git). "
-                          f"Falling back to sdpa.")
-                    kwargs["attn_implementation"] = "sdpa"
-                else:
-                    print(f"Flash Attention {version} active.")
-                    # FA4 exposes the same flash_attn_func API as FA2 — transformers picks it up automatically
-                    kwargs["attn_implementation"] = "flash_attention_2"
-            except ImportError:
-                print("Warning: flash-attn not installed, falling back to sdpa.")
-                kwargs["attn_implementation"] = "sdpa"
-        elif attn_impl:
-            kwargs["attn_implementation"] = attn_impl
-        model = AutoModelForCausalLM.from_pretrained(model_cfg["base_model"], **kwargs)
+        model = AutoModelForCausalLM.from_pretrained(model_cfg["base_model"], **load_kwargs)
+
+        if attn_impl == "cudnn_attention":
+            num_heads = model.config.num_attention_heads
+            head_dim = model.config.hidden_size // num_heads
+            _patch_sdpa_with_te_cudnn(num_heads, head_dim, model_dtype)
     else:
-        # CPU fallback
         model = AutoModelForCausalLM.from_pretrained(
             model_cfg["base_model"],
             device_map="cpu",

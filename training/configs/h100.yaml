@@ -4,7 +4,7 @@ model:
   base_model: "meta-llama/Llama-3.2-3B-Instruct"
   torch_dtype: "bfloat16"
   max_seq_length: 4096
-  attn_implementation: "flash_attention_4"  # FA4 Hopper kernels via dao-ailab/flash-attention v4; loader maps this to the FA2 transformers hook
+  attn_implementation: "cudnn_attention"  # NVIDIA Transformer Engine cuDNN FusedAttention (sub-backend 1); patches F.scaled_dot_product_attention
 
 lora:
   rank: 256          # 2x L4 — richer task-specific subspace for better precision
