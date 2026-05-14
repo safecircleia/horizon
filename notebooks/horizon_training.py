@@ -48,19 +48,21 @@ def _(ROOT, mo, subprocess):
     import datetime
 
     def stream(cmd, log_name=None):
-        """Run a command, stream output live, and persist it to a log file."""
+        """Run a command, stream output live with in-place progress updates, persist to log."""
         cmd_str = " ".join(str(c) for c in cmd)
         mo.output.append(mo.md(f"```\n$ {cmd_str}\n```"))
 
-        # Persist output to a log file so it survives cell re-runs
         logs_dir = ROOT / "logs"
         logs_dir.mkdir(exist_ok=True)
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        label = log_name or cmd[2] if len(cmd) > 2 else cmd[0]
+        label = log_name or (cmd[2] if len(cmd) > 2 else cmd[0])
         label = str(label).replace("/", "_").replace(".", "_")
         log_path = logs_dir / f"{ts}-{label}.log"
 
-        lines = [f"$ {cmd_str}\n"]
+        # Buffer for display — supports \r in-place updates (tqdm progress bars)
+        display_lines = []
+        raw_lines = [f"$ {cmd_str}\n"]
+
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -68,22 +70,35 @@ def _(ROOT, mo, subprocess):
             text=True,
             cwd=ROOT,
         ) as proc:
-            for line in proc.stdout:
-                mo.output.append(mo.plain_text(line.rstrip()))
-                lines.append(line)
+            for raw in proc.stdout:
+                raw_lines.append(raw)
+                # \r without \n means in-place progress update — overwrite last line
+                if "\r" in raw and not raw.endswith("\n"):
+                    last = raw.split("\r")[-1].rstrip()
+                    if display_lines:
+                        display_lines[-1] = last
+                    else:
+                        display_lines.append(last)
+                else:
+                    # Handle mixed \r\n (e.g. "...100%|\r\n")
+                    clean = raw.split("\r")[-1].rstrip()
+                    if clean:
+                        display_lines.append(clean)
+                mo.output.clear()
+                mo.output.append(mo.plain_text("\n".join(display_lines[-200:])))
             proc.wait()
 
-        log_path.write_text("".join(lines))
+        log_path.write_text("".join(raw_lines))
 
         if proc.returncode != 0:
             mo.output.append(mo.callout(
-                mo.md(f"❌ Exited with code {proc.returncode} — log saved to `{log_path.relative_to(ROOT)}`"),
-                kind="danger"
+                mo.md(f"❌ Exited with code {proc.returncode} — log: `{log_path.relative_to(ROOT)}`"),
+                kind="danger",
             ))
         else:
             mo.output.append(mo.callout(
-                mo.md(f"✅ Done — log saved to `{log_path.relative_to(ROOT)}`"),
-                kind="success"
+                mo.md(f"✅ Done — log: `{log_path.relative_to(ROOT)}`"),
+                kind="success",
             ))
         return proc.returncode
     return datetime, stream
