@@ -8,11 +8,13 @@ import torch
 import torch.nn as nn
 from transformers import MobileBertModel, MobileBertConfig
 
+LABELS = ["safe", "risk"]
+
+# Kept for backward compatibility with distill.py
 CATEGORIES = [
     "grooming", "bullying", "sexual_content", "isolation",
     "personal_info", "platform_migration", "threats", "benign",
 ]
-
 SEVERITIES = ["none", "low", "medium", "high", "critical"]
 
 MOBILEBERT_MODEL = "google/mobilebert-uncased"
@@ -27,8 +29,7 @@ class HorizonMobileModel(nn.Module):
             config = MobileBertConfig()
             self.encoder = MobileBertModel(config)
         hidden = self.encoder.config.hidden_size
-        self.category_head = nn.Linear(hidden, len(CATEGORIES))
-        self.severity_head = nn.Linear(hidden, len(SEVERITIES))
+        self.classifier = nn.Linear(hidden, len(LABELS))
 
     def forward(
         self,
@@ -37,28 +38,19 @@ class HorizonMobileModel(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         out = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
         pooled = out.pooler_output
-        return {
-            "category_logits": self.category_head(pooled),
-            "severity_logits": self.severity_head(pooled),
-        }
+        return {"logits": self.classifier(pooled)}
 
     def predict(
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> Dict:
-        self.eval()
+        self.train(False)
         with torch.no_grad():
-            logits = self.forward(input_ids=input_ids, attention_mask=attention_mask)
-        cat_probs = torch.softmax(logits["category_logits"], dim=-1)[0]
-        sev_probs = torch.softmax(logits["severity_logits"], dim=-1)[0]
-        cat_idx = cat_probs.argmax().item()
-        sev_idx = sev_probs.argmax().item()
-        return {
-            "category": CATEGORIES[cat_idx],
-            "severity": SEVERITIES[sev_idx],
-            "confidence": round(cat_probs[cat_idx].item(), 4),
-        }
+            out = self.forward(input_ids=input_ids, attention_mask=attention_mask)
+        probs = torch.softmax(out["logits"], dim=-1)[0]
+        idx = probs.argmax().item()
+        return {"label": LABELS[idx], "confidence": round(probs[idx].item(), 4)}
 
     def save_pretrained(self, path: str) -> None:
         os.makedirs(path, exist_ok=True)

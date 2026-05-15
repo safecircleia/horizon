@@ -21,7 +21,7 @@ class _ModelWrapper(torch.nn.Module):
 
     def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor):
         out = self.model(input_ids=input_ids, attention_mask=attention_mask)
-        return out["category_logits"], out["severity_logits"]
+        return out["logits"]
 
 
 def export_to_onnx(
@@ -47,7 +47,7 @@ def export_to_onnx(
             (dummy_input_ids, dummy_attention),
             output_path,
             input_names=["input_ids", "attention_mask"],
-            output_names=["category_logits", "severity_logits"],
+            output_names=["logits"],
             dynamic_shapes=dynamic_shapes,
             opset_version=18,
             dynamo=True,
@@ -79,11 +79,7 @@ def verify_onnx_output(
     attention_mask: np.ndarray,
 ):
     session = ort.InferenceSession(onnx_path)
-    cat_logits, sev_logits = session.run(
-        None,
-        {"input_ids": input_ids, "attention_mask": attention_mask},
-    )
-    return cat_logits, sev_logits
+    return session.run(None, {"input_ids": input_ids, "attention_mask": attention_mask})
 
 
 def main():
@@ -122,8 +118,8 @@ def main():
     print("Verifying output...")
     dummy_ids = np.zeros((1, 32), dtype=np.int64)
     dummy_mask = np.ones((1, 32), dtype=np.int64)
-    cat_logits, sev_logits = verify_onnx_output(final_path, dummy_ids, dummy_mask)
-    print(f"Output shapes: category={cat_logits.shape}, severity={sev_logits.shape}")
+    logits, = verify_onnx_output(final_path, dummy_ids, dummy_mask)
+    print(f"Output shape: logits={logits.shape}")
     print("Export complete.")
 
 

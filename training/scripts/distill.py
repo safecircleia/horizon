@@ -195,15 +195,9 @@ def main():
     student = HorizonMobileModel(pretrained=True).to(device)
     student_tokenizer = AutoTokenizer.from_pretrained("google/mobilebert-uncased")
 
-    # Class weights inversely proportional to category frequency in training data
-    cat_counts = {"grooming": 8000, "bullying": 7000, "sexual_content": 7000,
-                  "isolation": 5000, "personal_info": 5000, "platform_migration": 3000,
-                  "threats": 5000, "benign": 10000}
-    total = sum(cat_counts.values())
-    cat_weights = torch.tensor(
-        [total / (len(CATEGORIES) * cat_counts[c]) for c in CATEGORIES],
-        dtype=torch.float32, device=device
-    )
+    # Binary classification: benign=0, any risk=1
+    # Weight the risk class 2x since benign is 2x more common (10k vs 40k risk)
+    binary_weights = torch.tensor([1.0, 2.5], dtype=torch.float32, device=device)
 
     class DistillationTrainer(Trainer):
         def _model_inputs(self, inputs):
@@ -213,22 +207,10 @@ def main():
             }
 
         def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-            soft_raw = inputs.get("soft_labels", None)
             hard_cat = inputs["hard_cat_labels"].to(device)
-            hard_sev = inputs["hard_sev_labels"].to(device)
-            if soft_raw is None:
-                soft = torch.full((hard_cat.shape[0], len(CATEGORIES)), 1.0 / len(CATEGORIES), device=device)
-            else:
-                soft = soft_raw.to(device) if isinstance(soft_raw, torch.Tensor) else torch.tensor(soft_raw, dtype=torch.float32, device=device)
-                soft = soft.clamp(min=1e-8)
-                soft = soft / soft.sum(dim=-1, keepdim=True)
+            binary_labels = (hard_cat != CATEGORY_TO_IDX["benign"]).long()
             out = model(**self._model_inputs(inputs))
-            loss = distillation_loss(
-                out["category_logits"], out["severity_logits"],
-                soft, hard_cat, hard_sev,
-                temperature=temperature, alpha=alpha,
-                cat_weights=cat_weights,
-            )
+            loss = F.cross_entropy(out["logits"], binary_labels, weight=binary_weights)
             return (loss, out) if return_outputs else loss
 
         def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):

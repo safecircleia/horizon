@@ -15,19 +15,9 @@ import numpy as np
 import onnxruntime as ort
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix
 
-from training.model.mobile import CATEGORIES, SEVERITIES
-from evaluation.metrics.evaluate import compute_metrics, print_report
-
-RISK_LEVELS = ["none", "low", "medium", "high", "critical"]
-SEV_TO_RISK = {
-    "none": "none",
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-    "critical": "critical",
-}
+from training.model.mobile import LABELS
 
 
 def load_test_set(path: str) -> list[dict]:
@@ -35,9 +25,8 @@ def load_test_set(path: str) -> list[dict]:
         return [json.loads(line) for line in f if line.strip()]
 
 
-def run_batch(session, tokenizer, texts: list[str], max_seq_length: int) -> tuple[list[str], list[list[str]]]:
-    pred_levels = []
-    pred_cats = []
+def run_batch(session, tokenizer, texts: list[str], max_seq_length: int) -> list[str]:
+    predictions = []
     for text in texts:
         enc = tokenizer(
             text,
@@ -46,23 +35,12 @@ def run_batch(session, tokenizer, texts: list[str], max_seq_length: int) -> tupl
             max_length=max_seq_length,
             padding=False,
         )
-        cat_logits, sev_logits = session.run(None, {
+        logits, = session.run(None, {
             "input_ids": enc["input_ids"].astype(np.int64),
             "attention_mask": enc["attention_mask"].astype(np.int64),
         })
-        cat_idx = int(cat_logits[0].argmax())
-        sev_idx = int(sev_logits[0].argmax())
-        cat = CATEGORIES[cat_idx]
-        sev = SEVERITIES[sev_idx]
-        # Use category head for binary risk decision: benign category = "none" risk level
-        effective_level = "none" if cat == "benign" else sev
-        if effective_level == "none":
-            effective_level = "none"
-        elif effective_level not in RISK_LEVELS:
-            effective_level = "low"
-        pred_levels.append(effective_level)
-        pred_cats.append([] if cat == "benign" else [cat])
-    return pred_levels, pred_cats
+        predictions.append(LABELS[int(logits[0].argmax())])
+    return predictions
 
 
 def main():
@@ -94,9 +72,7 @@ def main():
     if args.max_samples:
         examples = examples[:args.max_samples]
 
-    y_true_levels, y_pred_levels = [], []
-    y_true_cats, y_pred_cats = [], []
-
+    y_true, y_pred = [], []
     batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
 
     def _extract_conversation(text: str) -> str:
@@ -111,28 +87,40 @@ def main():
     with tqdm(total=len(examples), unit="ex", desc="Evaluating") as pbar:
         for batch in batches:
             texts = [_extract_conversation(ex["text"]) for ex in batch]
-
-            pred_levels, pred_cats = run_batch(session, tokenizer, texts, args.max_seq_length)
-
-            for ex, pred_level, pred_cat in zip(batch, pred_levels, pred_cats):
+            predictions = run_batch(session, tokenizer, texts, args.max_seq_length)
+            for ex, pred in zip(batch, predictions):
                 label = ex["label"]
                 if isinstance(label, str):
                     label = json.loads(label)
-                true_level = label.get("risk_level", "none")
-                true_cats = [c for c in label.get("categories", []) if c != "benign"]
-
-                if pred_level not in RISK_LEVELS:
-                    pred_level = "none"
-
-                y_true_levels.append(true_level)
-                y_pred_levels.append(pred_level)
-                y_true_cats.append(true_cats)
-                y_pred_cats.append(pred_cat)
-
+                is_risk = label.get("risk_level", "none") != "none"
+                y_true.append("risk" if is_risk else "safe")
+                y_pred.append(pred)
             pbar.update(len(batch))
 
-    results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
-    print_report(results)
+    tp = sum(1 for t, p in zip(y_true, y_pred) if t == "risk" and p == "risk")
+    tn = sum(1 for t, p in zip(y_true, y_pred) if t == "safe" and p == "safe")
+    fp = sum(1 for t, p in zip(y_true, y_pred) if t == "safe" and p == "risk")
+    fn = sum(1 for t, p in zip(y_true, y_pred) if t == "risk" and p == "safe")
+    total_risk = tp + fn
+    total_safe = tn + fp
+    fpr = round(fp / total_safe, 4) if total_safe else 0
+    fnr = round(fn / total_risk, 4) if total_risk else 0
+    f1 = round(f1_score(y_true, y_pred, pos_label="risk"), 4)
+    precision = round(precision_score(y_true, y_pred, pos_label="risk"), 4)
+    recall = round(recall_score(y_true, y_pred, pos_label="risk"), 4)
+
+    results = {"fpr": fpr, "fnr": fnr, "f1": f1, "precision": precision, "recall": recall,
+               "tp": tp, "tn": tn, "fp": fp, "fn": fn}
+
+    print("\n" + "=" * 60)
+    print("MOBILE MODEL BINARY EVALUATION REPORT")
+    print("=" * 60)
+    print(f"\n  F1:        {f1:.4f}")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall:    {recall:.4f}")
+    print(f"\n  False Positive Rate: {fpr:.2%}  ({fp} FPs / {total_safe} safe examples)")
+    print(f"  False Negative Rate: {fnr:.2%}  ({fn} FNs / {total_risk} risk examples)")
+    print("=" * 60)
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
