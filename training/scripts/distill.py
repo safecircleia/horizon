@@ -168,11 +168,14 @@ def main():
     train_examples = load_jsonl(data_cfg["train_file"])
     val_examples = load_jsonl(data_cfg["eval_file"])
 
-    print(f"Generating soft labels for {len(train_examples)} train examples...")
-    train_with_soft = generate_soft_labels(
-        teacher, teacher_tokenizer, train_examples,
-        max_seq_length=2048, batch_size=64, device=device
-    )
+    print("Building soft labels from stored labels (no inference needed)...")
+    train_with_soft = []
+    for ex in tqdm(train_examples, desc="Soft labels", unit="ex"):
+        label = ex.get("label", {})
+        if isinstance(label, str):
+            label = json.loads(label)
+        parsed = {"categories": label.get("categories", []), "confidence": label.get("severity_score", label.get("confidence", 0.5))}
+        train_with_soft.append({**ex, "soft_labels": _build_soft_label(parsed)})
 
     del teacher
     if device == "cuda":
