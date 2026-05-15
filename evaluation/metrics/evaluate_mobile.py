@@ -93,9 +93,18 @@ def main():
 
     batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
 
+    def _extract_conversation(text: str) -> str:
+        user_tag = "<|start_header_id|>user<|end_header_id|>"
+        asst_tag = "<|start_header_id|>assistant<|end_header_id|>"
+        if user_tag in text:
+            text = text[text.index(user_tag) + len(user_tag):]
+        if asst_tag in text:
+            text = text[:text.index(asst_tag)]
+        return text.replace("<|eot_id|>", "").strip()
+
     with tqdm(total=len(examples), unit="ex", desc="Evaluating") as pbar:
         for batch in batches:
-            texts = [ex["text"] for ex in batch]
+            texts = [_extract_conversation(ex["text"]) for ex in batch]
 
             pred_levels, pred_cats = run_batch(session, tokenizer, texts, args.max_seq_length)
 

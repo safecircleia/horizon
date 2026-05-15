@@ -218,8 +218,18 @@ def main():
     output_dir = train_cfg["output_dir"].replace("{timestamp}", timestamp)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
+    def _extract_conversation(text: str) -> str:
+        """Strip Llama chat template boilerplate, keep only the conversation content."""
+        user_tag = "<|start_header_id|>user<|end_header_id|>"
+        asst_tag = "<|start_header_id|>assistant<|end_header_id|>"
+        if user_tag in text:
+            text = text[text.index(user_tag) + len(user_tag):]
+        if asst_tag in text:
+            text = text[:text.index(asst_tag)]
+        return text.replace("<|eot_id|>", "").strip()
+
     def tokenize_and_label(examples_list, include_soft=False):
-        texts = [ex["text"] for ex in examples_list]
+        texts = [_extract_conversation(ex["text"]) for ex in examples_list]
         enc = student_tokenizer(texts, truncation=True, max_length=max_seq, padding=False)
         records = []
         for i, ex in enumerate(examples_list):
