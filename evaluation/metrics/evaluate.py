@@ -48,10 +48,12 @@ def _extract_prompt(text: str) -> str:
 
 
 def _parse_prediction(generated: str) -> Optional[dict]:
+    # Model sometimes repeats the output; take only the first JSON block
+    first_block = generated.split("\nassistant")[0].strip()
     try:
-        return json.loads(generated.strip())
+        return json.loads(first_block)
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", generated, re.DOTALL)
+        match = re.search(r"\{.*?\}", first_block, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(0))
