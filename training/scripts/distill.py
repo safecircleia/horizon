@@ -15,7 +15,6 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorWithPadding,
 )
 
 from training.model.mobile import HorizonMobileModel, CATEGORIES, SEVERITIES
@@ -204,12 +203,27 @@ def main():
     train_dataset = Dataset.from_list(tokenize_and_label(train_with_soft, include_soft=True))
     val_dataset = Dataset.from_list(tokenize_and_label(val_examples, include_soft=False))
 
+    def distill_collator(features):
+        input_ids = [torch.tensor(f["input_ids"]) for f in features]
+        attention_mask = [torch.tensor(f["attention_mask"]) for f in features]
+        input_ids = torch.nn.utils.rnn.pad_sequence(input_ids, batch_first=True, padding_value=student_tokenizer.pad_token_id)
+        attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask, batch_first=True, padding_value=0)
+        batch = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "hard_cat_labels": torch.tensor([f["hard_cat_labels"] for f in features], dtype=torch.long),
+            "hard_sev_labels": torch.tensor([f["hard_sev_labels"] for f in features], dtype=torch.long),
+        }
+        if "soft_labels" in features[0]:
+            batch["soft_labels"] = torch.tensor([f["soft_labels"] for f in features], dtype=torch.float32)
+        return batch
+
     trainer = DistillationTrainer(
         model=student,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        data_collator=DataCollatorWithPadding(student_tokenizer),
+        data_collator=distill_collator,
     )
 
     print("Starting distillation training...")
