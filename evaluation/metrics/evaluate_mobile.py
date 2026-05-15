@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--output", default="evaluation/reports/mobile", help="Output directory")
     parser.add_argument("--max-samples", type=int)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--max-seq-length", type=int, default=256)
+    parser.add_argument("--max-seq-length", type=int, default=512)
     args = parser.parse_args()
 
     model_dir = Path(args.model)

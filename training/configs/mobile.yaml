@@ -2,7 +2,7 @@
 
 model:
   base_model: "google/mobilebert-uncased"
-  max_seq_length: 256
+  max_seq_length: 512
 
 distillation:
   temperature: 4.0
@@ -34,4 +34,4 @@ training:
 data:
   train_file: "data/processed/train.jsonl"
   eval_file: "data/processed/eval.jsonl"
-  max_seq_length: 256
+  max_seq_length: 512

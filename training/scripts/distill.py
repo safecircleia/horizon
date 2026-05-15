@@ -35,6 +35,7 @@ def distillation_loss(
     hard_sev_labels: torch.Tensor,
     temperature: float,
     alpha: float,
+    cat_weights: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     scaled_student = student_cat_logits.clamp(-30, 30) / temperature
     kl_loss = F.kl_div(
@@ -42,7 +43,7 @@ def distillation_loss(
         soft_labels,
         reduction="batchmean",
     )
-    ce_cat = F.cross_entropy(student_cat_logits, hard_cat_labels)
+    ce_cat = F.cross_entropy(student_cat_logits, hard_cat_labels, weight=cat_weights)
     ce_sev = F.cross_entropy(student_sev_logits, hard_sev_labels)
     return alpha * kl_loss + (1 - alpha) * (ce_cat + ce_sev) / 2
 
@@ -194,6 +195,16 @@ def main():
     student = HorizonMobileModel(pretrained=True).to(device)
     student_tokenizer = AutoTokenizer.from_pretrained("google/mobilebert-uncased")
 
+    # Class weights inversely proportional to category frequency in training data
+    cat_counts = {"grooming": 8000, "bullying": 7000, "sexual_content": 7000,
+                  "isolation": 5000, "personal_info": 5000, "platform_migration": 3000,
+                  "threats": 5000, "benign": 10000}
+    total = sum(cat_counts.values())
+    cat_weights = torch.tensor(
+        [total / (len(CATEGORIES) * cat_counts[c]) for c in CATEGORIES],
+        dtype=torch.float32, device=device
+    )
+
     class DistillationTrainer(Trainer):
         def _model_inputs(self, inputs):
             return {
@@ -216,6 +227,7 @@ def main():
                 out["category_logits"], out["severity_logits"],
                 soft, hard_cat, hard_sev,
                 temperature=temperature, alpha=alpha,
+                cat_weights=cat_weights,
             )
             return (loss, out) if return_outputs else loss
 
