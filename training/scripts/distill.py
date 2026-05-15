@@ -170,7 +170,8 @@ def main():
 
     print(f"Generating soft labels for {len(train_examples)} train examples...")
     train_with_soft = generate_soft_labels(
-        teacher, teacher_tokenizer, train_examples, max_seq, device=device
+        teacher, teacher_tokenizer, train_examples,
+        max_seq_length=2048, batch_size=64, device=device
     )
 
     del teacher
