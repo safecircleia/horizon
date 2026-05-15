@@ -143,8 +143,7 @@ distill:
 export-mobile:
 	python -m training.scripts.export_onnx \
 		--checkpoint $(CHECKPOINT) \
-		--output models/mobile \
-		--quantize
+		--output models/mobile
 
 # Evaluation
 evaluate:
