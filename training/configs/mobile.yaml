@@ -20,7 +20,7 @@ training:
   weight_decay: 0.01
   max_grad_norm: 1.0
   fp16: false
-  bf16: true
+  bf16: false
   logging_steps: 50
   eval_steps: 250
   save_steps: 250
