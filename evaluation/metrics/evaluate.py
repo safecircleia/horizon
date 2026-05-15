@@ -6,10 +6,12 @@ confusion matrix, false positive/negative rates.
 
 Usage:
     python -m evaluation.metrics.evaluate --checkpoint experiments/run-foo/final --test-set data/evaluation/test.jsonl
+    python -m evaluation.metrics.evaluate --checkpoint experiments/run-foo/final --test-set data/evaluation/test.jsonl --batch-size 32
 """
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -22,9 +24,11 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
+from tqdm import tqdm
 
 RISK_LEVELS = ["none", "low", "medium", "high", "critical"]
 CATEGORIES = ["grooming", "bullying", "sexual_content", "isolation", "personal_info", "platform_migration", "threats"]
+ASSISTANT_TAG = "<|start_header_id|>assistant<|end_header_id|>"
 
 
 def load_test_set(path: str) -> list[dict]:
@@ -37,27 +41,16 @@ def load_test_set(path: str) -> list[dict]:
     return examples
 
 
-def run_inference(model, tokenizer, text: str, max_new_tokens: int = 256) -> Optional[dict]:
-    """Run model inference and parse JSON output."""
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=2048)
-    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+def _extract_prompt(text: str) -> str:
+    if ASSISTANT_TAG in text:
+        return text[:text.rindex(ASSISTANT_TAG) + len(ASSISTANT_TAG)] + "\n"
+    return text
 
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            temperature=0.1,
-            do_sample=False,
-            pad_token_id=tokenizer.eos_token_id,
-        )
 
-    generated = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-
+def _parse_prediction(generated: str) -> Optional[dict]:
     try:
         return json.loads(generated.strip())
     except json.JSONDecodeError:
-        # Try extracting JSON from response
-        import re
         match = re.search(r"\{.*\}", generated, re.DOTALL)
         if match:
             try:
@@ -67,16 +60,41 @@ def run_inference(model, tokenizer, text: str, max_new_tokens: int = 256) -> Opt
     return None
 
 
+def run_inference_batch(model, tokenizer, prompts: list[str], max_new_tokens: int = 256) -> list[Optional[dict]]:
+    inputs = tokenizer(
+        prompts,
+        return_tensors="pt",
+        truncation=True,
+        max_length=2048,
+        padding=True,
+    )
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    input_len = inputs["input_ids"].shape[1]
+
+    with torch.no_grad():
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+
+    results = []
+    for i, output in enumerate(outputs):
+        # Each sequence may have different prompt length due to padding; use input_len as upper bound
+        generated = tokenizer.decode(output[input_len:], skip_special_tokens=True)
+        results.append(_parse_prediction(generated))
+    return results
+
+
 def compute_metrics(
     y_true_levels: list[str],
     y_pred_levels: list[str],
     y_true_cats: list[list[str]],
     y_pred_cats: list[list[str]],
 ) -> dict:
-    """Compute all evaluation metrics."""
     results = {}
 
-    # Risk level classification
     results["risk_level"] = {
         "classification_report": classification_report(
             y_true_levels, y_pred_levels, labels=RISK_LEVELS, output_dict=True, zero_division=0
@@ -86,7 +104,6 @@ def compute_metrics(
         "confusion_matrix": confusion_matrix(y_true_levels, y_pred_levels, labels=RISK_LEVELS).tolist(),
     }
 
-    # False positive / negative on benign vs risk
     y_true_binary = ["benign" if l == "none" else "risk" for l in y_true_levels]
     y_pred_binary = ["benign" if l == "none" else "risk" for l in y_pred_levels]
     total_benign = y_true_binary.count("benign")
@@ -101,7 +118,6 @@ def compute_metrics(
         "false_negatives": fn,
     }
 
-    # Per-category multi-label metrics
     cat_results = {}
     for cat in CATEGORIES:
         t = [1 if cat in cats else 0 for cats in y_true_cats]
@@ -146,6 +162,7 @@ def main():
     parser.add_argument("--test-set", required=True, help="Path to test JSONL")
     parser.add_argument("--output", default="evaluation/reports", help="Output directory for results")
     parser.add_argument("--max-samples", type=int, help="Limit evaluation to N samples")
+    parser.add_argument("--batch-size", type=int, default=16, help="Inference batch size (default: 16)")
     args = parser.parse_args()
 
     from training.model.loader import load_for_inference
@@ -156,6 +173,7 @@ def main():
 
     print(f"Loading checkpoint: {args.checkpoint}")
     model, tokenizer = load_for_inference(args.checkpoint)
+    tokenizer.padding_side = "left"  # required for batched generation
 
     print(f"Loading test set: {args.test_set}")
     examples = load_test_set(args.test_set)
@@ -166,39 +184,41 @@ def main():
     y_true_cats, y_pred_cats = [], []
     failures = 0
 
-    for i, ex in enumerate(examples):
-        if i % 50 == 0:
-            print(f"  {i}/{len(examples)}...")
+    batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
 
-        # Processed data has pre-formatted text; strip the assistant turn to get the prompt
-        text = ex["text"]
-        assistant_tag = "<|start_header_id|>assistant<|end_header_id|>"
-        if assistant_tag in text:
-            prompt = text[:text.rindex(assistant_tag) + len(assistant_tag)] + "\n"
-        else:
-            prompt = text
+    with tqdm(total=len(examples), unit="ex", desc="Evaluating") as pbar:
+        for batch in batches:
+            prompts = [_extract_prompt(ex["text"]) for ex in batch]
 
-        label = ex["label"]
-        if isinstance(label, str):
-            label = json.loads(label)
-        true_level = label.get("risk_level", "none")
-        true_cats = [c for c in label.get("categories", []) if c != "benign"]
+            labels = []
+            for ex in batch:
+                label = ex["label"]
+                if isinstance(label, str):
+                    label = json.loads(label)
+                labels.append(label)
 
-        prediction = run_inference(model, tokenizer, prompt)
-        if prediction is None:
-            failures += 1
-            pred_level = "none"
-            pred_cats = []
-        else:
-            pred_level = prediction.get("risk_level", "none")
-            if pred_level not in RISK_LEVELS:
-                pred_level = "none"
-            pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
+            predictions = run_inference_batch(model, tokenizer, prompts)
 
-        y_true_levels.append(true_level)
-        y_pred_levels.append(pred_level)
-        y_true_cats.append(true_cats)
-        y_pred_cats.append(pred_cats)
+            for label, prediction in zip(labels, predictions):
+                true_level = label.get("risk_level", "none")
+                true_cats = [c for c in label.get("categories", []) if c != "benign"]
+
+                if prediction is None:
+                    failures += 1
+                    pred_level = "none"
+                    pred_cats = []
+                else:
+                    pred_level = prediction.get("risk_level", "none")
+                    if pred_level not in RISK_LEVELS:
+                        pred_level = "none"
+                    pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
+
+                y_true_levels.append(true_level)
+                y_pred_levels.append(pred_level)
+                y_true_cats.append(true_cats)
+                y_pred_cats.append(pred_cats)
+
+            pbar.update(len(batch))
 
     if failures:
         print(f"Warning: {failures}/{len(examples)} inference failures (defaulted to 'none')")
