@@ -133,9 +133,12 @@ def main():
 
     class DistillationTrainer(Trainer):
         def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-            soft = torch.tensor(inputs.pop("soft_labels"), dtype=torch.float32).to(device)
+            soft_raw = inputs.pop("soft_labels", None)
             hard_cat = inputs.pop("hard_cat_labels").to(device)
             hard_sev = inputs.pop("hard_sev_labels").to(device)
+            if soft_raw is None:
+                soft_raw = torch.zeros(hard_cat.shape[0], len(CATEGORIES))
+            soft = torch.tensor(soft_raw, dtype=torch.float32).to(device) if not isinstance(soft_raw, torch.Tensor) else soft_raw.to(device)
             out = model(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
@@ -177,8 +180,29 @@ def main():
         dataloader_num_workers=train_cfg.get("dataloader_num_workers", 2),
     )
 
-    train_dataset = Dataset.from_list(train_with_soft)
-    val_dataset = Dataset.from_list(val_examples)
+    def tokenize_and_label(examples_list, include_soft=False):
+        texts = [ex["text"] for ex in examples_list]
+        enc = student_tokenizer(texts, truncation=True, max_length=max_seq, padding=False)
+        records = []
+        for i, ex in enumerate(examples_list):
+            label = ex.get("label", {})
+            if isinstance(label, str):
+                label = json.loads(label)
+            cat_str = (label.get("categories") or [ex.get("category", "benign")])[0]
+            sev_str = label.get("risk_level", "none")
+            record = {
+                "input_ids": enc["input_ids"][i],
+                "attention_mask": enc["attention_mask"][i],
+                "hard_cat_labels": CATEGORY_TO_IDX.get(cat_str, 0),
+                "hard_sev_labels": SEVERITY_TO_IDX.get(sev_str, 0),
+            }
+            if include_soft:
+                record["soft_labels"] = ex["soft_labels"]
+            records.append(record)
+        return records
+
+    train_dataset = Dataset.from_list(tokenize_and_label(train_with_soft, include_soft=True))
+    val_dataset = Dataset.from_list(tokenize_and_label(val_examples, include_soft=False))
 
     trainer = DistillationTrainer(
         model=student,
