@@ -34,12 +34,12 @@ def distillation_loss(
     alpha: float,
 ) -> torch.Tensor:
     """Combined KL divergence (soft) + CrossEntropy (hard) loss."""
-    scaled_student = student_cat_logits / temperature
+    scaled_student = student_cat_logits.clamp(-30, 30) / temperature
     kl_loss = F.kl_div(
         F.log_softmax(scaled_student, dim=-1),
         soft_labels,
         reduction="batchmean",
-    ) * (temperature ** 2)
+    )
 
     ce_cat = F.cross_entropy(student_cat_logits, hard_cat_labels)
     ce_sev = F.cross_entropy(student_sev_logits, hard_sev_labels)
@@ -131,23 +131,35 @@ def main():
     student_tokenizer = AutoTokenizer.from_pretrained("google/mobilebert-uncased")
 
     class DistillationTrainer(Trainer):
+        def _model_inputs(self, inputs):
+            return {
+                "input_ids": inputs["input_ids"],
+                "attention_mask": inputs["attention_mask"],
+            }
+
         def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-            soft_raw = inputs.pop("soft_labels", None)
-            hard_cat = inputs.pop("hard_cat_labels").to(device)
-            hard_sev = inputs.pop("hard_sev_labels").to(device)
+            soft_raw = inputs.get("soft_labels", None)
+            hard_cat = inputs["hard_cat_labels"].to(device)
+            hard_sev = inputs["hard_sev_labels"].to(device)
             if soft_raw is None:
-                soft_raw = torch.zeros(hard_cat.shape[0], len(CATEGORIES))
-            soft = torch.tensor(soft_raw, dtype=torch.float32).to(device) if not isinstance(soft_raw, torch.Tensor) else soft_raw.to(device)
-            out = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-            )
+                soft = torch.zeros(hard_cat.shape[0], len(CATEGORIES), device=device)
+            else:
+                soft = (soft_raw.to(device) if isinstance(soft_raw, torch.Tensor)
+                        else torch.tensor(soft_raw, dtype=torch.float32, device=device))
+                soft = soft.clamp(min=1e-8)
+                soft = soft / soft.sum(dim=-1, keepdim=True)
+            out = model(**self._model_inputs(inputs))
             loss = distillation_loss(
                 out["category_logits"], out["severity_logits"],
                 soft, hard_cat, hard_sev,
                 temperature=temperature, alpha=alpha,
             )
             return (loss, out) if return_outputs else loss
+
+        def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+            with torch.no_grad():
+                loss = self.compute_loss(model, inputs)
+            return loss.detach(), None, None
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     output_dir = train_cfg["output_dir"].replace("{timestamp}", timestamp)
