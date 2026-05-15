@@ -6,11 +6,11 @@ model:
 
 distillation:
   temperature: 4.0
-  alpha: 0.7
+  alpha: 0.0
 
 training:
   output_dir: "experiments/mobile-{timestamp}"
-  max_steps: 5000
+  max_steps: 10000
   per_device_train_batch_size: 32
   per_device_eval_batch_size: 32
   gradient_accumulation_steps: 1
