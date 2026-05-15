@@ -69,6 +69,14 @@ class HorizonMobileModel(nn.Module):
     @classmethod
     def from_pretrained(cls, path: str) -> "HorizonMobileModel":
         model = cls(pretrained=False)
-        state = torch.load(f"{path}/pytorch_model.bin", map_location="cpu", weights_only=True)
-        model.load_state_dict(state)
+        bin_path = f"{path}/pytorch_model.bin"
+        safetensors_path = f"{path}/model.safetensors"
+        if os.path.exists(bin_path):
+            state = torch.load(bin_path, map_location="cpu", weights_only=True)
+        elif os.path.exists(safetensors_path):
+            from safetensors.torch import load_file
+            state = load_file(safetensors_path)
+        else:
+            raise FileNotFoundError(f"No model weights found in {path}")
+        model.load_state_dict(state, strict=False)
         return model
