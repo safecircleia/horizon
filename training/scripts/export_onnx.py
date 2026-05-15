@@ -57,7 +57,14 @@ def export_to_onnx(
 def quantize_onnx(input_path: str, output_path: str) -> None:
     from onnxruntime.quantization.preprocess import quant_pre_process
     preprocessed_path = input_path.replace(".onnx", "-preprocessed.onnx")
-    quant_pre_process(input_model_path=input_path, output_model_path=preprocessed_path)
+    # skip_symbolic_shape and skip_optimization avoid Range op assertion bug
+    # in onnxruntime symbolic shape inference for dynamo-exported transformer models
+    quant_pre_process(
+        input_model_path=input_path,
+        output_model_path=preprocessed_path,
+        skip_symbolic_shape=True,
+        skip_optimization=True,
+    )
     quantize_dynamic(
         model_input=preprocessed_path,
         model_output=output_path,
