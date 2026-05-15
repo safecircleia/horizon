@@ -70,14 +70,24 @@ def _parse_teacher_output(generated: str) -> Optional[Dict]:
 def _build_soft_label(parsed: Optional[Dict]) -> List[float]:
     """Convert a teacher JSON prediction into a soft label probability vector."""
     n = len(CATEGORIES)
-    uniform = [1.0 / n] * n
+    benign_idx = CATEGORY_TO_IDX.get("benign", n - 1)
+
     if parsed is None:
-        return uniform
+        # Unknown — peak on benign with low confidence
+        soft = [0.05 / (n - 1)] * n
+        soft[benign_idx] = 0.95
+        return soft
+
     pred_cats = parsed.get("categories", [])
     confidence = min(max(float(parsed.get("confidence", 0.5)), 0.0), 1.0)
-    matched = [c for c in pred_cats if c in CATEGORY_TO_IDX]
+    matched = [c for c in pred_cats if c in CATEGORY_TO_IDX and c != "benign"]
+
     if not matched:
-        return uniform
+        # Benign example — peak strongly on benign class
+        soft = [0.05 / (n - 1)] * n
+        soft[benign_idx] = 0.95
+        return soft
+
     soft = [0.0] * n
     share = confidence / len(matched)
     remainder = (1.0 - confidence) / max(n - len(matched), 1)
