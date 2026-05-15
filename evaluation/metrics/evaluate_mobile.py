@@ -54,7 +54,13 @@ def run_batch(session, tokenizer, texts: list[str], max_seq_length: int) -> tupl
         sev_idx = int(sev_logits[0].argmax())
         cat = CATEGORIES[cat_idx]
         sev = SEVERITIES[sev_idx]
-        pred_levels.append(sev)
+        # Use category head for binary risk decision: benign category = "none" risk level
+        effective_level = "none" if cat == "benign" else sev
+        if effective_level == "none":
+            effective_level = "none"
+        elif effective_level not in RISK_LEVELS:
+            effective_level = "low"
+        pred_levels.append(effective_level)
         pred_cats.append([] if cat == "benign" else [cat])
     return pred_levels, pred_cats
 
