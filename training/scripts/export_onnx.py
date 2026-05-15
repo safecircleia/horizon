@@ -33,6 +33,14 @@ def export_to_onnx(
     wrapper.eval()
     dummy_input_ids = torch.zeros(1, max_seq_length, dtype=torch.long)
     dummy_attention = torch.ones(1, max_seq_length, dtype=torch.long)
+
+    batch = torch.export.Dim("batch", min=1, max=64)
+    seq = torch.export.Dim("seq", min=1, max=512)
+    dynamic_shapes = {
+        "input_ids": {0: batch, 1: seq},
+        "attention_mask": {0: batch, 1: seq},
+    }
+
     with torch.no_grad():
         torch.onnx.export(
             wrapper,
@@ -40,15 +48,9 @@ def export_to_onnx(
             output_path,
             input_names=["input_ids", "attention_mask"],
             output_names=["category_logits", "severity_logits"],
-            dynamic_axes={
-                "input_ids": {0: "batch_size", 1: "sequence_length"},
-                "attention_mask": {0: "batch_size", 1: "sequence_length"},
-                "category_logits": {0: "batch_size"},
-                "severity_logits": {0: "batch_size"},
-            },
+            dynamic_shapes=dynamic_shapes,
             opset_version=18,
-            do_constant_folding=True,
-            dynamo=False,
+            dynamo=True,
         )
 
 
