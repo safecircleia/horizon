@@ -55,11 +55,15 @@ def export_to_onnx(
 
 
 def quantize_onnx(input_path: str, output_path: str) -> None:
+    from onnxruntime.quantization.preprocess import quant_pre_process
+    preprocessed_path = input_path.replace(".onnx", "-preprocessed.onnx")
+    quant_pre_process(input_model_path=input_path, output_model_path=preprocessed_path)
     quantize_dynamic(
-        model_input=input_path,
+        model_input=preprocessed_path,
         model_output=output_path,
         weight_type=QuantType.QUInt8,
     )
+    Path(preprocessed_path).unlink(missing_ok=True)
 
 
 def verify_onnx_output(
