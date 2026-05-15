@@ -149,7 +149,6 @@ def main():
     args = parser.parse_args()
 
     from training.model.loader import load_for_inference
-    from training.scripts.preprocess import conversation_to_text, SYSTEM_PROMPT
 
     if not Path(args.test_set).exists():
         print(f"Error: test set not found: {args.test_set}", file=sys.stderr)
@@ -171,19 +170,19 @@ def main():
         if i % 50 == 0:
             print(f"  {i}/{len(examples)}...")
 
-        conversation_text = conversation_to_text(ex["messages"])
-        prompt = (
-            f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n"
-            f"{SYSTEM_PROMPT}\n"
-            f"<|eot_id|>\n"
-            f"<|start_header_id|>user<|end_header_id|>\n"
-            f"Analyze this conversation:\n{conversation_text}\n"
-            f"<|eot_id|>\n"
-            f"<|start_header_id|>assistant<|end_header_id|>\n"
-        )
+        # Processed data has pre-formatted text; strip the assistant turn to get the prompt
+        text = ex["text"]
+        assistant_tag = "<|start_header_id|>assistant<|end_header_id|>"
+        if assistant_tag in text:
+            prompt = text[:text.rindex(assistant_tag) + len(assistant_tag)] + "\n"
+        else:
+            prompt = text
 
-        true_level = ex["label"]["risk_level"]
-        true_cats = [c for c in ex["label"].get("categories", []) if c != "benign"]
+        label = ex["label"]
+        if isinstance(label, str):
+            label = json.loads(label)
+        true_level = label.get("risk_level", "none")
+        true_cats = [c for c in label.get("categories", []) if c != "benign"]
 
         prediction = run_inference(model, tokenizer, prompt)
         if prediction is None:
