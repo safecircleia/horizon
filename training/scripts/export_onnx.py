@@ -33,21 +33,23 @@ def export_to_onnx(
     wrapper.eval()
     dummy_input_ids = torch.zeros(1, max_seq_length, dtype=torch.long)
     dummy_attention = torch.ones(1, max_seq_length, dtype=torch.long)
-    torch.onnx.export(
-        wrapper,
-        (dummy_input_ids, dummy_attention),
-        output_path,
-        input_names=["input_ids", "attention_mask"],
-        output_names=["category_logits", "severity_logits"],
-        dynamic_axes={
-            "input_ids": {0: "batch_size", 1: "sequence_length"},
-            "attention_mask": {0: "batch_size", 1: "sequence_length"},
-            "category_logits": {0: "batch_size"},
-            "severity_logits": {0: "batch_size"},
-        },
-        opset_version=17,
-        do_constant_folding=True,
-    )
+    with torch.no_grad():
+        torch.onnx.export(
+            wrapper,
+            (dummy_input_ids, dummy_attention),
+            output_path,
+            input_names=["input_ids", "attention_mask"],
+            output_names=["category_logits", "severity_logits"],
+            dynamic_axes={
+                "input_ids": {0: "batch_size", 1: "sequence_length"},
+                "attention_mask": {0: "batch_size", 1: "sequence_length"},
+                "category_logits": {0: "batch_size"},
+                "severity_logits": {0: "batch_size"},
+            },
+            opset_version=18,
+            do_constant_folding=True,
+            dynamo=False,
+        )
 
 
 def quantize_onnx(input_path: str, output_path: str) -> None:
