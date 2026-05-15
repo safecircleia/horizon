@@ -80,11 +80,20 @@ def run_inference_batch(model, tokenizer, prompts: list[str], max_new_tokens: in
         )
 
     results = []
-    for i, output in enumerate(outputs):
-        # Each sequence may have different prompt length due to padding; use input_len as upper bound
+    for output in outputs:
         generated = tokenizer.decode(output[input_len:], skip_special_tokens=True)
         results.append(_parse_prediction(generated))
     return results
+
+
+def run_inference_batch_debug(model, tokenizer, prompts: list[str], max_new_tokens: int = 256) -> list[str]:
+    """Return raw decoded strings for debugging."""
+    inputs = tokenizer(prompts, return_tensors="pt", truncation=True, max_length=2048, padding=True)
+    inputs = {k: v.to(model.device) for k, v in inputs.items()}
+    input_len = inputs["input_ids"].shape[1]
+    with torch.no_grad():
+        outputs = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+    return [tokenizer.decode(o[input_len:], skip_special_tokens=True) for o in outputs]
 
 
 def compute_metrics(
@@ -163,6 +172,7 @@ def main():
     parser.add_argument("--output", default="evaluation/reports", help="Output directory for results")
     parser.add_argument("--max-samples", type=int, help="Limit evaluation to N samples")
     parser.add_argument("--batch-size", type=int, default=16, help="Inference batch size (default: 16)")
+    parser.add_argument("--debug", type=int, default=0, metavar="N", help="Print raw output for first N examples and exit")
     args = parser.parse_args()
 
     from training.model.loader import load_for_inference
@@ -179,6 +189,15 @@ def main():
     examples = load_test_set(args.test_set)
     if args.max_samples:
         examples = examples[:args.max_samples]
+
+    if args.debug:
+        sample = examples[:args.debug]
+        prompts = [_extract_prompt(ex["text"]) for ex in sample]
+        print(f"\n--- PROMPT (example 0) ---\n{prompts[0]}\n--- END PROMPT ---\n")
+        raw_outputs = run_inference_batch_debug(model, tokenizer, prompts)
+        for i, raw in enumerate(raw_outputs):
+            print(f"\n--- RAW OUTPUT {i} ---\n{raw}\n--- END ---")
+        sys.exit(0)
 
     y_true_levels, y_pred_levels = [], []
     y_true_cats, y_pred_cats = [], []
