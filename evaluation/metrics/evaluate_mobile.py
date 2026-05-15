@@ -36,22 +36,22 @@ def load_test_set(path: str) -> list[dict]:
 
 
 def run_batch(session, tokenizer, texts: list[str], max_seq_length: int) -> tuple[list[str], list[list[str]]]:
-    enc = tokenizer(
-        texts,
-        return_tensors="np",
-        truncation=True,
-        max_length=max_seq_length,
-        padding="max_length",
-    )
-    cat_logits, sev_logits = session.run(None, {
-        "input_ids": enc["input_ids"].astype(np.int64),
-        "attention_mask": enc["attention_mask"].astype(np.int64),
-    })
     pred_levels = []
     pred_cats = []
-    for i in range(len(texts)):
-        cat_idx = int(cat_logits[i].argmax())
-        sev_idx = int(sev_logits[i].argmax())
+    for text in texts:
+        enc = tokenizer(
+            text,
+            return_tensors="np",
+            truncation=True,
+            max_length=max_seq_length,
+            padding=False,
+        )
+        cat_logits, sev_logits = session.run(None, {
+            "input_ids": enc["input_ids"].astype(np.int64),
+            "attention_mask": enc["attention_mask"].astype(np.int64),
+        })
+        cat_idx = int(cat_logits[0].argmax())
+        sev_idx = int(sev_logits[0].argmax())
         cat = CATEGORIES[cat_idx]
         sev = SEVERITIES[sev_idx]
         pred_levels.append(sev)
