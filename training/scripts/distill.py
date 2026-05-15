@@ -177,6 +177,7 @@ def main():
         report_to=train_cfg.get("report_to", "tensorboard"),
         optim=train_cfg.get("optim", "adamw_torch_fused"),
         dataloader_num_workers=train_cfg.get("dataloader_num_workers", 2),
+        remove_unused_columns=False,
     )
 
     def tokenize_and_label(examples_list, include_soft=False):
