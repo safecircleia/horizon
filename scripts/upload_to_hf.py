@@ -17,7 +17,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi, create_repo
 
-ORG = "safecircleia"
+ORG = "safecircleai"
 
 FULL_REPO = f"{ORG}/horizon-full"
 GGUF_REPO = f"{ORG}/horizon-full-gguf"
@@ -93,8 +93,8 @@ Horizon Full is a fine-tuned [Llama 3.2 3B Instruct](https://huggingface.co/meta
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch, json
 
-model = AutoModelForCausalLM.from_pretrained("safecircleia/horizon-full", torch_dtype=torch.bfloat16)
-tokenizer = AutoTokenizer.from_pretrained("safecircleia/horizon-full")
+model = AutoModelForCausalLM.from_pretrained("safecircleai/horizon-full", torch_dtype=torch.bfloat16)
+tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-full")
 
 SYSTEM_PROMPT = "You are SafeCircle's risk detection model. Analyze conversations for child safety risks. Output JSON with: risk_level (none/low/medium/high/critical), categories (array), confidence (0-1), matched_terms (array), reasoning (brief)."
 
@@ -143,7 +143,7 @@ This model is designed for child safety monitoring in chat platforms. It is inte
   title={Horizon: Child Safety Risk Detection via Fine-tuned LLMs},
   author={SafeCircle},
   year={2025},
-  url={https://huggingface.co/safecircleia/horizon-full}
+  url={https://huggingface.co/safecircleai/horizon-full}
 }
 ```
 """
@@ -160,12 +160,12 @@ tags:
 - gguf
 - llama
 - quantized
-base_model: safecircleia/horizon-full
+base_model: safecircleai/horizon-full
 ---
 
 # Horizon Full GGUF — SafeCircle Risk Detection Model
 
-GGUF quantized variants of [safecircleia/horizon-full](https://huggingface.co/safecircleia/horizon-full) for use with [llama.cpp](https://github.com/ggerganov/llama.cpp), [Ollama](https://ollama.ai), and compatible runtimes.
+GGUF quantized variants of [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full) for use with [llama.cpp](https://github.com/ggerganov/llama.cpp), [Ollama](https://ollama.ai), and compatible runtimes.
 
 ## Available Files
 
@@ -189,13 +189,13 @@ GGUF quantized variants of [safecircleia/horizon-full](https://huggingface.co/sa
 ## Usage with Ollama
 
 ```bash
-ollama pull safecircleia/horizon-full-gguf
-ollama run safecircleia/horizon-full-gguf
+ollama pull safecircleai/horizon-full-gguf
+ollama run safecircleai/horizon-full-gguf
 ```
 
 ## Performance
 
-See [safecircleia/horizon-full](https://huggingface.co/safecircleia/horizon-full) for full evaluation metrics.
+See [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full) for full evaluation metrics.
 Q4_K_M shows <1% degradation vs F16 on the risk detection benchmark.
 """
 
@@ -217,7 +217,7 @@ base_model: google/mobilebert-uncased
 
 # Horizon Mobile — On-Device Child Safety Classifier
 
-Horizon Mobile is a lightweight binary risk classifier designed for on-device inference on iOS and Android. It is distilled from [safecircleia/horizon-full](https://huggingface.co/safecircleia/horizon-full) using knowledge distillation.
+Horizon Mobile is a lightweight binary risk classifier designed for on-device inference on iOS and Android. It is distilled from [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full) using knowledge distillation.
 
 ## Model Details
 
@@ -270,7 +270,7 @@ import onnxruntime as ort
 from transformers import AutoTokenizer
 
 session = ort.InferenceSession("horizon-mobile.onnx")
-tokenizer = AutoTokenizer.from_pretrained("safecircleia/horizon-mobile")
+tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-mobile")
 
 conversation = "Child: Can we meet? Don't tell your parents."
 enc = tokenizer(conversation, return_tensors="np", truncation=True, max_length=512, padding=False)
@@ -299,7 +299,7 @@ print(f"{label} ({confidence:.2%})")
 
 def ensure_repo(api: HfApi, repo_id: str, repo_type: str = "model"):
     try:
-        create_repo(repo_id, repo_type=repo_type, exist_ok=True, private=False)
+        create_repo(repo_id, repo_type=repo_type, exist_ok=True, private=True)
         print(f"  Repo ready: {repo_id}")
     except Exception as e:
         print(f"  Warning: {e}")
