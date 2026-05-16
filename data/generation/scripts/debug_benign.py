@@ -78,4 +78,45 @@ async def main():
 
     print("\n=== ALL STEPS PASSED — benign generation should work ===")
 
-asyncio.run(main())
+async def concurrent():
+    """Test 20 benign requests concurrently to reproduce the batch failure."""
+    config = load_config("data/generation/config.yaml")
+    gen = create_generator("vllm", config)
+    quality_config = config.get("quality", {})
+
+    async def one(i):
+        from data.generation.validators.schemas import RiskCategory, RiskLevel, Message, ConversationLabel, SyntheticConversation
+        prompt = create_conversation_prompt(RiskCategory.BENIGN, RiskLevel.NONE, 15, 8)
+        result = await gen.generate(prompt)
+        if not result.success:
+            return f"[{i}] HTTP fail: {result.error}"
+        try:
+            raw = result.conversation.get("messages", [])
+            messages = [Message(**m) for m in raw]
+            is_valid, errors = validate_conversation_quality(
+                messages,
+                min_length=quality_config.get("min_conversation_length", 4),
+                max_length=quality_config.get("max_conversation_length", 30),
+                min_unique_tokens=quality_config.get("min_unique_tokens", 20),
+                allow_consecutive_roles=True,
+            )
+            if not is_valid:
+                return f"[{i}] quality fail: {errors}"
+            label = ConversationLabel(
+                risk_level=RiskLevel.NONE,
+                categories=[RiskCategory.BENIGN],
+                severity_score=0.0,
+                reasoning=result.conversation.get("reasoning", "Generated conversation"),
+            )
+            return f"[{i}] OK"
+        except Exception as e:
+            return f"[{i}] EXCEPTION: {type(e).__name__}: {e}"
+
+    results = await asyncio.gather(*[one(i) for i in range(20)])
+    print("\n=== 20 concurrent benign requests ===")
+    for r in results:
+        print(" ", r)
+    ok = sum(1 for r in results if "OK" in r)
+    print(f"\n{ok}/20 succeeded")
+
+asyncio.run(concurrent())
