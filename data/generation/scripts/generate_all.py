@@ -10,14 +10,15 @@ Usage:
 
 import argparse
 import asyncio
+import sys
 import time
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.live import Live
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
-from rich.table import Table
 
 from data.generation.scripts.generate import count_existing, create_generator, generate_batch, load_config, write_conversations
 from data.generation.validators.schemas import RiskCategory
@@ -25,19 +26,42 @@ from data.generation.validators.schemas import RiskCategory
 ALL_CATEGORIES = [c.value for c in RiskCategory]
 
 
+async def probe_vllm(base_url: str, model: str, console: Console) -> bool:
+    """Check vLLM is reachable and the model is loaded. Prints a clear error if not."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"{base_url}/models")
+            r.raise_for_status()
+            available = [m["id"] for m in r.json().get("data", [])]
+    except Exception as e:
+        console.print(f"[bold red]ERROR:[/] Cannot reach vLLM at {base_url}\n  {e}")
+        return False
+
+    if model not in available:
+        console.print(
+            f"[bold red]ERROR:[/] Model [bold]{model}[/] not found on vLLM server.\n"
+            f"  Available: {available}\n"
+            f"  Fix: update [bold]model_vllm[/] in data/generation/config.yaml to match."
+        )
+        return False
+
+    console.print(f"[green]✓[/] vLLM OK — model [bold]{model}[/] at {base_url}")
+    return True
+
+
 async def run_category(cat: str, target: int, remaining: int, generator_type: str,
                        config: dict, output_dir: Path, resume: bool,
                        progress: Progress, task_id: int) -> tuple[str, int]:
     already = target - remaining
     start = time.monotonic()
-    last_update = [0]  # throttle: only update progress every 5 completions
+    last_n = [0]
 
     def on_progress(n_done: int, n_failed: int) -> None:
-        if n_done - last_update[0] >= 5:
+        if n_done - last_n[0] >= 5:
             elapsed = time.monotonic() - start
             rate = n_done / elapsed if elapsed > 0 else 0
             progress.update(task_id, completed=already + n_done, rate=rate)
-            last_update[0] = n_done
+            last_n[0] = n_done
 
     generator = create_generator(generator_type, config)
     concurrency = config.get("generation", {}).get("concurrency", 10)
@@ -74,6 +98,17 @@ async def main() -> None:
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    console = Console()
+
+    # Probe vLLM before starting so failures are visible immediately
+    if args.generator == "vllm":
+        gen_cfg = config.get("generation", {})
+        base_url = gen_cfg.get("vllm_base_url", "http://localhost:8000/v1").rstrip("/")
+        model = gen_cfg.get("model_vllm", "Qwen/Qwen2.5-72B-Instruct-AWQ")
+        ok = await probe_vllm(base_url, model, console)
+        if not ok:
+            sys.exit(1)
+
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[bold]{task.description:<22}"),
@@ -92,7 +127,6 @@ async def main() -> None:
         task_id = progress.add_task(cat, total=args.count, completed=already, rate=0.0)
         tasks.append((cat, args.count, remaining, task_id))
 
-    console = Console()
     console.print(f"[bold]Horizon Generator[/]  generator=[cyan]{args.generator}[/]  "
                   f"target=[bold]{args.count:,}[/] per category  output=[dim]{output_dir}[/]\n")
 
