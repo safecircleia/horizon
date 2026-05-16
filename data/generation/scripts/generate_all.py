@@ -186,14 +186,23 @@ class GeneratorApp(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#cattable", DataTable)
-        table.add_columns("Category", "Progress", "Done", "Target", "Rate", "ETA", "Errors", "Status")
+        col_keys = table.add_columns("Category", "Progress", "Done", "Target", "Rate", "ETA", "Errors", "Status")
+        # Cache column keys by name for O(1) update_cell calls
+        self._col = {
+            "Progress": col_keys[1],
+            "Done":     col_keys[2],
+            "Rate":     col_keys[4],
+            "ETA":      col_keys[5],
+            "Errors":   col_keys[6],
+            "Status":   col_keys[7],
+        }
 
         for cat in self.categories:
             already = count_existing(str(self.output_dir / f"{cat}.jsonl")) if self.resume else 0
             state = CatState(name=cat, target=self.count, completed=already)
             self.states[cat] = state
             self._pause_events[cat] = asyncio.Event()
-            self._pause_events[cat].set()  # not paused initially
+            self._pause_events[cat].set()
             table.add_row(
                 cat, "0%", str(already), str(self.count),
                 "—", "—", "0", "waiting",
@@ -201,7 +210,8 @@ class GeneratorApp(App):
             )
 
         self._start_all()
-        self.set_interval(0.25, self._refresh_table)
+        # 2 Hz is plenty — reduces UI overhead significantly
+        self.set_interval(0.5, self._refresh_table)
 
     def _start_all(self) -> None:
         for cat in self.categories:
@@ -232,7 +242,9 @@ class GeneratorApp(App):
             return
 
         def on_progress(n_done: int, n_failed: int) -> None:
-            state.tick(already + n_done, n_failed)
+            # Throttle: only recompute rate every 10 completions
+            if n_done % 10 == 0 or n_done == self.count:
+                state.tick(already + n_done, n_failed)
 
         # Wrap generate_batch to respect pause
         original_generate = generator.generate
@@ -273,6 +285,14 @@ class GeneratorApp(App):
 
     def _refresh_table(self) -> None:
         table = self.query_one("#cattable", DataTable)
+        col = self._col
+        status_map = {
+            "waiting": "waiting",
+            "running": "[green]running[/]",
+            "paused":  "[yellow]paused[/]",
+            "done":    "[bold green]done ✓[/]",
+            "error":   "[bold red]error ✗[/]",
+        }
         for cat, state in self.states.items():
             pct = f"{state.pct * 100:.1f}%"
             rate = f"{state.rate:.1f}/s" if state.rate > 0 else "—"
@@ -281,22 +301,13 @@ class GeneratorApp(App):
                 eta = f"{m}m{s:02d}s" if m else f"{s}s"
             else:
                 eta = "—"
-
-            color = CATEGORY_COLORS.get(cat, "white")
-            status_styled = {
-                "waiting": "[dim]waiting[/]",
-                "running": "[green]running[/]",
-                "paused":  "[yellow]paused[/]",
-                "done":    "[bold green]done ✓[/]",
-                "error":   "[bold red]error ✗[/]",
-            }.get(state.status, state.status)
-
-            table.update_cell(cat, "Progress", pct)
-            table.update_cell(cat, "Done",     f"{state.completed:,}")
-            table.update_cell(cat, "Rate",     rate)
-            table.update_cell(cat, "ETA",      eta)
-            table.update_cell(cat, "Errors",   str(state.failed))
-            table.update_cell(cat, "Status",   status_styled)
+            # Use cached ColumnKey objects — avoids O(n) string scan per call
+            table.update_cell(cat, col["Progress"], pct,            update_width=False)
+            table.update_cell(cat, col["Done"],     f"{state.completed:,}", update_width=False)
+            table.update_cell(cat, col["Rate"],     rate,            update_width=False)
+            table.update_cell(cat, col["ETA"],      eta,             update_width=False)
+            table.update_cell(cat, col["Errors"],   str(state.failed), update_width=False)
+            table.update_cell(cat, col["Status"],   status_map.get(state.status, state.status), update_width=False)
 
     def _log(self, msg: str) -> None:
         log = self.query_one("#log-panel", Log)
