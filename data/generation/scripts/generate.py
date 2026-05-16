@@ -236,7 +236,7 @@ async def generate_conversation(
 
             return conversation
 
-        except BaseException:
+        except Exception:
             continue
 
     return None
@@ -248,55 +248,57 @@ async def generate_batch(
     count: int,
     config: Dict[str, Any],
     concurrency: int = 10,
-    on_progress: Optional[Callable[[int], None]] = None,
+    on_progress: Optional[Callable[[int, int], None]] = None,
     tqdm_position: int = 0,
 ) -> List[SyntheticConversation]:
     """Generate a batch of conversations with a live worker pool.
 
-    on_progress: optional callback called with (n_completed_so_far) on each success.
-                 When provided, tqdm is suppressed (caller owns progress display).
+    on_progress: optional callback(n_success, n_failed) called after every attempt.
+                 When provided, tqdm is suppressed — the caller owns the display.
     """
     severity_dist = config.get("severity_distribution", {})
     conversations: List[SyntheticConversation] = []
+    failed = 0
+    done = asyncio.Event()
     semaphore = asyncio.Semaphore(concurrency)
-    queue: asyncio.Queue = asyncio.Queue()
-
-    needed = int(count * 1.3) + concurrency
-    for _ in range(needed):
-        await queue.put(select_severity(category, severity_dist))
 
     async def worker():
+        nonlocal failed
         while True:
-            try:
-                severity = queue.get_nowait()
-            except asyncio.QueueEmpty:
+            if len(conversations) >= count:
+                done.set()
                 return
+            severity = select_severity(category, severity_dist)
             async with semaphore:
-                result = await generate_conversation(
-                    generator, category, severity, config
-                )
-            queue.task_done()
+                result = await generate_conversation(generator, category, severity, config)
             if result is not None:
                 conversations.append(result)
-                if on_progress is not None:
-                    on_progress(len(conversations))
-                elif pbar is not None:
+            else:
+                failed += 1
+            if on_progress is not None:
+                on_progress(len(conversations), failed)
+            elif pbar is not None:
+                if result is not None:
                     pbar.update(1)
             if len(conversations) >= count:
+                done.set()
                 return
-            if queue.empty():
-                await queue.put(select_severity(category, severity_dist))
 
     if on_progress is not None:
-        # Caller drives the display — run workers without tqdm
         pbar = None
         workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
-        await asyncio.gather(*workers)
+        await done.wait()
+        for w in workers:
+            w.cancel()
+        await asyncio.gather(*workers, return_exceptions=True)
     else:
         with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
                   position=tqdm_position, leave=True) as pbar:
             workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
-            await asyncio.gather(*workers)
+            await done.wait()
+            for w in workers:
+                w.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
 
     return conversations[:count]
 
