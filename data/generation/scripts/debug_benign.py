@@ -1,10 +1,12 @@
-"""One-shot debug script — run on the server to find why benign fails."""
-import asyncio, json, re
+"""One-shot debug script — run from project root: python -m data.generation.scripts.debug_benign"""
+import asyncio, uuid, datetime, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from data.generation.scripts.generate import create_generator, load_config
 from data.generation.prompts.base import create_conversation_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel, Message, ConversationLabel, SyntheticConversation
 from data.generation.validators.quality import validate_conversation_quality
-import uuid, datetime
 
 async def main():
     config = load_config("data/generation/config.yaml")
