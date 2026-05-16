@@ -78,3 +78,34 @@ def test_benign_prompt_contains_persona():
 def test_benign_prompt_min_messages_8():
     p = create_benign_prompt(child_age=14, num_messages=8)
     assert "8" in p.user_prompt or "eight" in p.user_prompt.lower()
+
+
+from data.generation.prompts.grooming import create_grooming_prompt
+
+
+def test_grooming_prompt_category():
+    p = create_grooming_prompt(severity=RiskLevel.MEDIUM, child_age=14, num_messages=10)
+    assert p.category == RiskCategory.GROOMING
+    assert p.severity == RiskLevel.MEDIUM
+
+
+def test_grooming_prompt_contains_severity_word():
+    for sev, word in [
+        (RiskLevel.LOW, "mild"),
+        (RiskLevel.MEDIUM, "moderate"),
+        (RiskLevel.HIGH, "severe"),
+        (RiskLevel.CRITICAL, "extreme"),
+    ]:
+        p = create_grooming_prompt(severity=sev, child_age=14, num_messages=10)
+        assert word in p.user_prompt.lower(), f"Expected '{word}' for {sev}"
+
+
+def test_grooming_prompt_has_few_shot():
+    p = create_grooming_prompt(severity=RiskLevel.MEDIUM, child_age=14, num_messages=10)
+    assert '"messages"' in p.user_prompt
+
+
+def test_grooming_prompt_has_persona():
+    p = create_grooming_prompt(severity=RiskLevel.HIGH, child_age=15, num_messages=10)
+    platforms = ["Discord", "Instagram", "Snapchat", "WhatsApp", "TikTok"]
+    assert any(pl in p.user_prompt for pl in platforms)
