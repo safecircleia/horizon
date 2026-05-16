@@ -88,10 +88,12 @@ def create_conversation_prompt(
 
 **Instructions:**
 - Create a conversation between a {child_age}-year-old and another party
-- Include risk indicators appropriate for {category.value} at {severity.value} severity
 - Use realistic teen communication style (abbreviations, emojis, casual language)
 - Make the progression natural - don't rush to explicit risk content
 - Ensure timestamps progress realistically (seconds to minutes between messages)"""
+
+    if category != RiskCategory.BENIGN:
+        user_prompt += f"\n- Include risk indicators appropriate for {category.value} at {severity.value} severity"
 
     if additional_context:
         user_prompt += f"\n\n**Additional Context:**\n{additional_context}"
