@@ -246,7 +246,10 @@ async def generate_conversation(
 
             return conversation
 
-        except Exception:
+        except Exception as e:
+            if category == RiskCategory.BENIGN and attempt == 0:
+                import sys
+                print(f"[benign debug] attempt {attempt} exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
             continue
 
     return None
