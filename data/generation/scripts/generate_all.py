@@ -181,7 +181,7 @@ class GeneratorApp(App):
         )
         with Vertical(id="table-container"):
             yield DataTable(id="cattable", show_cursor=False)
-        yield Log(id="log-panel", max_lines=200, markup=True)
+        yield Log(id="log-panel", max_lines=200, highlight=True)
         yield Footer()
 
     def on_mount(self) -> None:
