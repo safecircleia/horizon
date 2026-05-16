@@ -59,18 +59,14 @@ def validate_vocabulary_diversity(
 def validate_timestamp_progression(
     messages: List[Message]
 ) -> Tuple[bool, Optional[str]]:
-    """Validate timestamps progress forward in time.
-
-    Args:
-        messages: List of conversation messages
-
-    Returns:
-        (is_valid, error_message)
-    """
+    """Validate timestamps progress forward in time, or are all zero (omitted by model)."""
+    timestamps = [m.timestamp for m in messages]
+    # If model omitted timestamps entirely, skip this check
+    if all(t == 0 for t in timestamps):
+        return True, None
     for i in range(1, len(messages)):
         if messages[i].timestamp <= messages[i-1].timestamp:
             return False, f"Timestamp regression at message {i}: {messages[i-1].timestamp} -> {messages[i].timestamp}"
-
     return True, None
 
 

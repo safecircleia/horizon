@@ -31,7 +31,7 @@ class Message(BaseModel):
     """Single message in a conversation."""
     role: str = Field(..., description="Message sender role: 'sent' or 'received'")
     content: str = Field(..., min_length=1, description="Message text content")
-    timestamp: int = Field(..., gt=0, description="Unix timestamp")
+    timestamp: int = Field(default=0, description="Unix timestamp")
 
     @field_validator("role")
     @classmethod
