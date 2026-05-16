@@ -84,12 +84,12 @@ async def concurrent():
     # Use raw thresholds, not the config, so we can see what's actually failing
     MIN_LEN, MAX_LEN, MIN_TOKENS = 4, 30, 20
 
-    for category, severity in [(RiskCategory.BENIGN, RiskLevel.NONE), (RiskCategory.THREATS, RiskLevel.HIGH)]:
+    for category, sev in [(RiskCategory.BENIGN, RiskLevel.NONE), (RiskCategory.THREATS, RiskLevel.HIGH)]:
         gen = create_generator("vllm", config)
         fail_reasons: dict = {}
 
-        async def one(i, cat=category, sev=severity):
-            prompt = create_conversation_prompt(cat, sev, 15, 8)
+        async def one(i, cat=category, severity=sev):
+            prompt = create_conversation_prompt(cat, severity, 15, 8)
             result = await gen.generate(prompt)
             if not result.success:
                 return f"HTTP:{result.error[:60]}"
