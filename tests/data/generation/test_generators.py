@@ -1,7 +1,7 @@
 """Tests for conversation generators."""
 
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from data.generation.generators.base import ConversationGenerator, GenerationResult
 from data.generation.prompts.base import ConversationPrompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
@@ -159,3 +159,64 @@ async def test_gpt_generator_api_error():
         assert not result.success
         assert result.error is not None
         assert "API Error" in result.error
+
+
+# vLLM Generator Tests
+
+
+def make_prompt():
+    return ConversationPrompt(
+        category=RiskCategory.BENIGN,
+        severity=RiskLevel.NONE,
+        system_prompt="sys",
+        user_prompt="user",
+        metadata={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_vllm_generator_sends_response_format():
+    """VLLMGenerator must include response_format in every request payload."""
+    from data.generation.generators.vllm_generator import VLLMGenerator
+
+    gen = VLLMGenerator(model="test-model", base_url="http://localhost:8000/v1")
+
+    captured = {}
+
+    async def fake_post(url, json=None, **kwargs):
+        captured["payload"] = json
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'}}]
+        }
+        return mock_resp
+
+    with patch.object(gen._client, "post", side_effect=fake_post):
+        await gen.generate(make_prompt())
+
+    assert "response_format" in captured["payload"]
+    assert captured["payload"]["response_format"]["type"] == "json_schema"
+
+
+@pytest.mark.asyncio
+async def test_vllm_generator_max_tokens_512():
+    """VLLMGenerator must set max_tokens to 512."""
+    from data.generation.generators.vllm_generator import VLLMGenerator
+
+    gen = VLLMGenerator(model="test-model", base_url="http://localhost:8000/v1")
+    captured = {}
+
+    async def fake_post(url, json=None, **kwargs):
+        captured["payload"] = json
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = {
+            "choices": [{"message": {"content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'}}]
+        }
+        return mock_resp
+
+    with patch.object(gen._client, "post", side_effect=fake_post):
+        await gen.generate(make_prompt())
+
+    assert captured["payload"]["max_tokens"] == 512
