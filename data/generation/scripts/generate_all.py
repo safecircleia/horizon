@@ -41,7 +41,7 @@ async def probe_vllm(base_url: str, model: str, console: Console) -> bool:
     return True
 
 
-async def run_category(cat: str, target: int, already: int, generator_type: str,
+async def run_category(cat: str, target: int, already: int, generator,
                        config: dict, output_dir: Path, resume: bool,
                        progress: Progress, task_id) -> tuple[str, int]:
     remaining = max(0, target - already)
@@ -49,7 +49,6 @@ async def run_category(cat: str, target: int, already: int, generator_type: str,
         progress.update(task_id, completed=target)
         return cat, target
 
-    generator = create_generator(generator_type, config)
     concurrency = config.get("generation", {}).get("concurrency", 10)
     start = time.monotonic()
 
@@ -122,9 +121,11 @@ async def main() -> None:
                   f"target=[bold]{args.count:,}[/]  "
                   f"concurrency=[bold]{config['generation'].get('concurrency', 10)}[/]\n")
 
+    generator = create_generator(args.generator, config)
+
     with Live(progress, refresh_per_second=2, console=console):
         coros = [
-            run_category(cat, target, already, args.generator, config,
+            run_category(cat, target, already, generator, config,
                          output_dir, args.resume, progress, task_id)
             for cat, target, already, task_id in jobs
         ]
