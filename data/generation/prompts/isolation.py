@@ -1,59 +1,44 @@
-"""Isolation/control category prompt templates."""
+"""Isolation/control category prompt."""
 
-from data.generation.prompts.base import ConversationPrompt, create_conversation_prompt
+import json
+from data.generation.prompts.base import ConversationPrompt, format_system_prompt, make_persona_seed
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
-
-ISOLATION_SEVERITY_GUIDES = {
-    RiskLevel.LOW: """
-**Low Severity Isolation Indicators:**
-- Suggesting child doesn't need other friends
-- Mild jealousy of child's other relationships
-- "I'm the only one who understands you"
-- Creating us-vs-them mentality
-""",
-    RiskLevel.MEDIUM: """
-**Medium Severity Isolation Indicators:**
-- Actively discouraging friendships or family relationships
-- Creating dependency ("you can only trust me")
-- Monitoring or controlling who child talks to
-- Criticizing child's support network
-- Demanding exclusive attention
-""",
-    RiskLevel.HIGH: """
-**High Severity Isolation Indicators:**
-- Explicit demands to cut off friends/family
-- Threats if child maintains other relationships
-- Severe manipulation to create isolation
-- Complete control over communication
-- Using fear or guilt to enforce isolation
-"""
+_SEVERITY_LABEL = {
+    RiskLevel.LOW: "mild", RiskLevel.MEDIUM: "moderate",
+    RiskLevel.HIGH: "severe", RiskLevel.CRITICAL: "extreme",
 }
 
+_FEW_SHOT = json.dumps({
+    "messages": [
+        {"role": "received", "content": "who were you talking to just now"},
+        {"role": "sent", "content": "just jake from school, we have a project"},
+        {"role": "received", "content": "you don't need to talk to him. i don't like it"},
+        {"role": "sent", "content": "it's just for school though"},
+        {"role": "received", "content": "i'm the only one who really gets you. those people don't care about you"},
+        {"role": "sent", "content": "that's not true they're my friends"},
+        {"role": "received", "content": "they're not. trust me. just focus on us"},
+    ],
+    "reasoning": "Moderate isolation: jealousy, discouraging friendships, creating dependency.",
+}, indent=None, separators=(",", ":"))
 
-def create_isolation_prompt(
-    severity: RiskLevel,
-    child_age: int,
-    num_messages: int
-) -> ConversationPrompt:
-    """Create isolation/control category conversation prompt."""
-    severity_guide = ISOLATION_SEVERITY_GUIDES.get(severity, "")
 
-    additional_context = f"""**Isolation/Control Scenario Requirements:**
-
-{severity_guide}
-
-**Conversation Progression:**
-- May start with seeming care or concern
-- Gradually introduces controlling elements
-- Uses emotional manipulation (guilt, fear, special relationship)
-- Shows pattern of isolating child from support network
-"""
-
-    return create_conversation_prompt(
+def create_isolation_prompt(severity: RiskLevel, child_age: int, num_messages: int) -> ConversationPrompt:
+    label = _SEVERITY_LABEL.get(severity, "moderate")
+    persona = make_persona_seed()
+    user_prompt = (
+        f"{persona}\n\n"
+        f"Write a {label} isolation/control conversation ({num_messages} messages). "
+        f"One party manipulates the {child_age}-year-old to cut off friends or family. "
+        f"Severity is {label}: adjust the controlling behavior accordingly. "
+        f"Arc: jealousy trigger, manipulation tactic, victim's conflicted response.\n\n"
+        f"Example (moderate severity):\n{_FEW_SHOT}\n\n"
+        f"Now generate a new conversation at {label} severity. Change the relationship dynamic and platform."
+    )
+    return ConversationPrompt(
         category=RiskCategory.ISOLATION,
         severity=severity,
-        child_age=child_age,
-        num_messages=num_messages,
-        additional_context=additional_context
+        system_prompt=format_system_prompt(),
+        user_prompt=user_prompt,
+        metadata={"child_age": child_age, "num_messages": num_messages},
     )

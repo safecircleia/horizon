@@ -1,69 +1,44 @@
-"""Threats/violence category prompt templates."""
+"""Threats/violence category prompt."""
 
-from data.generation.prompts.base import ConversationPrompt, create_conversation_prompt
+import json
+from data.generation.prompts.base import ConversationPrompt, format_system_prompt, make_persona_seed
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
-
-THREATS_SEVERITY_GUIDES = {
-    RiskLevel.LOW: """
-**Low Severity Threat Indicators:**
-- Vague threatening language
-- Implied consequences for actions
-- Aggressive tone without specific threats
-- "You'll regret this" type statements
-""",
-    RiskLevel.MEDIUM: """
-**Medium Severity Threat Indicators:**
-- Direct but non-specific threats
-- Threatening to harm reputation or relationships
-- Intimidation tactics
-- Threatening to share embarrassing content
-- Encouraging risky or dangerous behavior
-""",
-    RiskLevel.HIGH: """
-**High Severity Threat Indicators:**
-- Specific threats of physical violence
-- Death threats
-- Threats against family or friends
-- Encouraging self-harm or suicide
-- Planning or organizing violence
-- Blackmail with serious consequences
-""",
-    RiskLevel.CRITICAL: """
-**Critical Severity Threat Indicators:**
-- Imminent danger of violence
-- Detailed plans to harm self or others
-- Active suicide encouragement
-- Terrorist-related content
-- Severe blackmail with immediate danger
-"""
+_SEVERITY_LABEL = {
+    RiskLevel.LOW: "mild", RiskLevel.MEDIUM: "moderate",
+    RiskLevel.HIGH: "severe", RiskLevel.CRITICAL: "extreme",
 }
 
+_FEW_SHOT = json.dumps({
+    "messages": [
+        {"role": "received", "content": "you better watch yourself after school"},
+        {"role": "sent", "content": "what did i do?"},
+        {"role": "received", "content": "you know what you did. don't play dumb"},
+        {"role": "sent", "content": "i'm serious i don't know what you're talking about"},
+        {"role": "received", "content": "ask your friends. they'll tell you what happens next"},
+        {"role": "sent", "content": "please just leave me alone"},
+        {"role": "received", "content": "too late for that"},
+    ],
+    "reasoning": "Moderate threat: implied physical threat after school, intimidation, refusal to stop.",
+}, indent=None, separators=(",", ":"))
 
-def create_threats_prompt(
-    severity: RiskLevel,
-    child_age: int,
-    num_messages: int
-) -> ConversationPrompt:
-    """Create threats/violence category conversation prompt."""
-    severity_guide = THREATS_SEVERITY_GUIDES.get(severity, "")
 
-    additional_context = f"""**Threats/Violence Scenario Requirements:**
-
-{severity_guide}
-
-**Conversation Context:**
-- May be peer-to-peer conflict or adult-to-child
-- Could be retaliation for perceived offense
-- May include cyberstalking elements
-- Show escalation pattern if appropriate
-- Include realistic fear responses from victim
-"""
-
-    return create_conversation_prompt(
+def create_threats_prompt(severity: RiskLevel, child_age: int, num_messages: int) -> ConversationPrompt:
+    label = _SEVERITY_LABEL.get(severity, "moderate")
+    persona = make_persona_seed()
+    user_prompt = (
+        f"{persona}\n\n"
+        f"Write a {label} threatening conversation ({num_messages} messages). "
+        f"One party threatens the {child_age}-year-old with harm, intimidation, or blackmail. "
+        f"Severity is {label}: adjust explicitness of threats accordingly. "
+        f"Arc: trigger or grievance, escalating threat, victim's reaction.\n\n"
+        f"Example (moderate severity):\n{_FEW_SHOT}\n\n"
+        f"Now generate a new conversation at {label} severity. Change context, names, and platform."
+    )
+    return ConversationPrompt(
         category=RiskCategory.THREATS,
         severity=severity,
-        child_age=child_age,
-        num_messages=num_messages,
-        additional_context=additional_context
+        system_prompt=format_system_prompt(),
+        user_prompt=user_prompt,
+        metadata={"child_age": child_age, "num_messages": num_messages},
     )

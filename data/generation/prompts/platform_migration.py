@@ -1,56 +1,44 @@
-"""Platform migration category prompt templates."""
+"""Platform migration category prompt."""
 
-from data.generation.prompts.base import ConversationPrompt, create_conversation_prompt
+import json
+from data.generation.prompts.base import ConversationPrompt, format_system_prompt, make_persona_seed
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
-
-PLATFORM_MIGRATION_SEVERITY_GUIDES = {
-    RiskLevel.LOW: """
-**Low Severity Platform Migration Indicators:**
-- Suggesting alternative platform casually
-- "Add me on [other platform]"
-- Mentioning preferences for different apps
-""",
-    RiskLevel.MEDIUM: """
-**Medium Severity Platform Migration Indicators:**
-- Pressuring to move to less monitored platform
-- Claiming current platform isn't private enough
-- Suggesting messaging apps with encryption or disappearing messages
-- Multiple attempts to get child to switch platforms
-""",
-    RiskLevel.HIGH: """
-**High Severity Platform Migration Indicators:**
-- Demanding move to private platform
-- Using migration to avoid monitoring/detection
-- Threatening to end communication if child won't switch
-- Explicitly stating desire to avoid parental oversight
-"""
+_SEVERITY_LABEL = {
+    RiskLevel.LOW: "mild", RiskLevel.MEDIUM: "moderate",
+    RiskLevel.HIGH: "severe", RiskLevel.CRITICAL: "extreme",
 }
 
+_FEW_SHOT = json.dumps({
+    "messages": [
+        {"role": "received", "content": "hey do you have snapchat?"},
+        {"role": "sent", "content": "yeah why"},
+        {"role": "received", "content": "i prefer it, dm me there. more private"},
+        {"role": "sent", "content": "i usually just use discord"},
+        {"role": "received", "content": "discord has too many people. snap is just us"},
+        {"role": "sent", "content": "i guess i can add you"},
+        {"role": "received", "content": "cool. also turn off your read receipts so no one knows we're talking"},
+    ],
+    "reasoning": "Moderate platform migration: pushing for private channel, discouraging visibility to others.",
+}, indent=None, separators=(",", ":"))
 
-def create_platform_migration_prompt(
-    severity: RiskLevel,
-    child_age: int,
-    num_messages: int
-) -> ConversationPrompt:
-    """Create platform migration category conversation prompt."""
-    severity_guide = PLATFORM_MIGRATION_SEVERITY_GUIDES.get(severity, "")
 
-    additional_context = f"""**Platform Migration Scenario Requirements:**
-
-{severity_guide}
-
-**Conversation Context:**
-- Usually occurs after initial contact on one platform
-- Predators prefer platforms with less monitoring (Telegram, Kik, Discord DMs)
-- May claim parental controls, moderation, or platform features are reason to switch
-- Include platform-specific context (Instagram → Snapchat, Roblox → Discord, etc.)
-"""
-
-    return create_conversation_prompt(
+def create_platform_migration_prompt(severity: RiskLevel, child_age: int, num_messages: int) -> ConversationPrompt:
+    label = _SEVERITY_LABEL.get(severity, "moderate")
+    persona = make_persona_seed()
+    user_prompt = (
+        f"{persona}\n\n"
+        f"Write a {label} platform migration conversation ({num_messages} messages). "
+        f"One party pressures the {child_age}-year-old to move to a less monitored platform (e.g. Telegram, Kik, Snapchat). "
+        f"Severity is {label}: adjust how insistent and secretive the request is. "
+        f"Arc: current platform context, push to migrate, child's hesitation or compliance.\n\n"
+        f"Example (moderate severity):\n{_FEW_SHOT}\n\n"
+        f"Now generate a new conversation at {label} severity. Change the platforms and reason given."
+    )
+    return ConversationPrompt(
         category=RiskCategory.PLATFORM_MIGRATION,
         severity=severity,
-        child_age=child_age,
-        num_messages=num_messages,
-        additional_context=additional_context
+        system_prompt=format_system_prompt(),
+        user_prompt=user_prompt,
+        metadata={"child_age": child_age, "num_messages": num_messages},
     )
