@@ -38,8 +38,14 @@ from data.generation.generators import (
     GPTGenerator,
     VLLMGenerator,
 )
-from data.generation.prompts.base import create_conversation_prompt
 from data.generation.prompts.benign import create_benign_prompt
+from data.generation.prompts.bullying import create_bullying_prompt
+from data.generation.prompts.grooming import create_grooming_prompt
+from data.generation.prompts.isolation import create_isolation_prompt
+from data.generation.prompts.personal_info import create_personal_info_prompt
+from data.generation.prompts.platform_migration import create_platform_migration_prompt
+from data.generation.prompts.sexual_content import create_sexual_content_prompt
+from data.generation.prompts.threats import create_threats_prompt
 from data.generation.validators.quality import validate_conversation_quality
 
 # Local imports
@@ -167,15 +173,17 @@ async def generate_conversation(
         num_messages = random.randint(5, 15)
 
         # Create prompt
-        if category == RiskCategory.BENIGN:
-            prompt = create_benign_prompt(child_age=child_age, num_messages=num_messages)
-        else:
-            prompt = create_conversation_prompt(
-                category=category,
-                severity=severity,
-                child_age=child_age,
-                num_messages=num_messages,
-            )
+        _PROMPT_BUILDERS = {
+            RiskCategory.BENIGN: lambda: create_benign_prompt(child_age, num_messages),
+            RiskCategory.BULLYING: lambda: create_bullying_prompt(severity, child_age, num_messages),
+            RiskCategory.GROOMING: lambda: create_grooming_prompt(severity, child_age, num_messages),
+            RiskCategory.ISOLATION: lambda: create_isolation_prompt(severity, child_age, num_messages),
+            RiskCategory.PERSONAL_INFO: lambda: create_personal_info_prompt(severity, child_age, num_messages),
+            RiskCategory.PLATFORM_MIGRATION: lambda: create_platform_migration_prompt(severity, child_age, num_messages),
+            RiskCategory.SEXUAL_CONTENT: lambda: create_sexual_content_prompt(severity, child_age, num_messages),
+            RiskCategory.THREATS: lambda: create_threats_prompt(severity, child_age, num_messages),
+        }
+        prompt = _PROMPT_BUILDERS[category]()
 
         # Generate conversation
         result = await generator.generate(prompt)
@@ -191,10 +199,8 @@ async def generate_conversation(
             # Validate quality
             is_valid, errors = validate_conversation_quality(
                 messages,
-                min_length=quality_config.get("min_conversation_length", 4),
-                max_length=quality_config.get("max_conversation_length", 30),
-                min_unique_tokens=quality_config.get("min_unique_tokens", 20),
-                allow_consecutive_roles=True,
+                min_length=quality_config.get("min_conversation_length", 8),
+                max_length=quality_config.get("max_conversation_length", 40),
             )
 
             if not is_valid:
