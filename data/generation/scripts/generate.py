@@ -248,6 +248,7 @@ async def generate_batch(
     count: int,
     config: Dict[str, Any],
     concurrency: int = 10,
+    tqdm_position: int = 0,
 ) -> List[SyntheticConversation]:
     """Generate a batch of conversations with a live worker pool."""
     severity_dist = config.get("severity_distribution", {})
@@ -280,7 +281,8 @@ async def generate_batch(
             if queue.empty():
                 await queue.put(select_severity(category, severity_dist))
 
-    with tqdm(total=count, desc=f"Generating {category.value}", unit="conv") as pbar:
+    with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
+              position=tqdm_position, leave=True) as pbar:
         workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
         await asyncio.gather(*workers)
 
