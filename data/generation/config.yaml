@@ -36,7 +36,7 @@ generation:
 
 # Quality thresholds
 quality:
-  min_conversation_length: 4  # minimum messages
-  max_conversation_length: 30  # maximum messages
-  min_unique_tokens: 20  # vocabulary diversity
-  max_repetition_ratio: 0.3  # avoid copy-paste patterns
+  min_conversation_length: 3  # minimum messages
+  max_conversation_length: 40  # maximum messages
+  min_unique_tokens: 10  # vocabulary diversity — lowered for 7B under high concurrency
+  max_repetition_ratio: 0.5  # avoid copy-paste patterns

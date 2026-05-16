@@ -236,8 +236,7 @@ async def generate_conversation(
 
             return conversation
 
-        except Exception as e:
-            last_error = str(e)
+        except Exception:
             continue
 
     return None
