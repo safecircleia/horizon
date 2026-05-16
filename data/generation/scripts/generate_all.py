@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Generate all risk categories concurrently with a simple live progress display.
+"""Generate all risk categories concurrently with live progress bars.
 
 Usage:
     python -m data.generation.scripts.generate_all --generator vllm --count 200000
     python -m data.generation.scripts.generate_all --generator vllm --count 200000 --resume
-    python -m data.generation.scripts.generate_all --generator bedrock --count 5000
     python -m data.generation.scripts.generate_all --generator vllm --categories grooming bullying
 """
 
@@ -27,64 +26,63 @@ ALL_CATEGORIES = [c.value for c in RiskCategory]
 
 
 async def probe_vllm(base_url: str, model: str, console: Console) -> bool:
-    """Check vLLM is reachable and the model is loaded. Prints a clear error if not."""
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(f"{base_url}/models")
             r.raise_for_status()
             available = [m["id"] for m in r.json().get("data", [])]
     except Exception as e:
-        console.print(f"[bold red]ERROR:[/] Cannot reach vLLM at {base_url}\n  {e}")
+        console.print(f"[red]ERROR:[/] Cannot reach vLLM at {base_url} — {e}")
         return False
-
     if model not in available:
-        console.print(
-            f"[bold red]ERROR:[/] Model [bold]{model}[/] not found on vLLM server.\n"
-            f"  Available: {available}\n"
-            f"  Fix: update [bold]model_vllm[/] in data/generation/config.yaml to match."
-        )
+        console.print(f"[red]ERROR:[/] Model '{model}' not loaded. Available: {available}")
         return False
-
-    console.print(f"[green]✓[/] vLLM OK — model [bold]{model}[/] at {base_url}")
+    console.print(f"[green]✓[/] vLLM OK — {model}")
     return True
 
 
-async def run_category(cat: str, target: int, remaining: int, generator_type: str,
+async def run_category(cat: str, target: int, already: int, generator_type: str,
                        config: dict, output_dir: Path, resume: bool,
-                       progress: Progress, task_id: int) -> tuple[str, int]:
-    already = target - remaining
+                       progress: Progress, task_id) -> tuple[str, int]:
+    remaining = max(0, target - already)
+    if remaining == 0:
+        progress.update(task_id, completed=target)
+        return cat, target
+
+    generator = create_generator(generator_type, config)
+    concurrency = config.get("generation", {}).get("concurrency", 10)
     start = time.monotonic()
     last_n = [0]
 
     def on_progress(n_done: int, n_failed: int) -> None:
-        if n_done - last_n[0] >= 5:
-            elapsed = time.monotonic() - start
-            rate = n_done / elapsed if elapsed > 0 else 0
+        # Update display every 5 successes
+        if n_done >= last_n[0] + 5:
+            rate = n_done / max(time.monotonic() - start, 0.1)
             progress.update(task_id, completed=already + n_done, rate=rate)
             last_n[0] = n_done
-
-    generator = create_generator(generator_type, config)
-    concurrency = config.get("generation", {}).get("concurrency", 10)
 
     convs = await generate_batch(
         generator, RiskCategory(cat), remaining, config,
         concurrency=concurrency, on_progress=on_progress,
     )
 
-    output_path = output_dir / f"{cat}.jsonl"
     if convs:
-        write_conversations(convs, str(output_path), append=resume and already > 0)
+        write_conversations(convs, str(output_dir / f"{cat}.jsonl"),
+                            append=resume and already > 0)
 
-    progress.update(task_id, completed=already + len(convs))
-    return cat, already + len(convs)
+    total = already + len(convs)
+    progress.update(task_id, completed=total)
+    return cat, total
 
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--generator", default="vllm", choices=["claude", "openai", "bedrock", "vllm"])
+    parser.add_argument("--generator", default="vllm",
+                        choices=["claude", "openai", "bedrock", "vllm"])
     parser.add_argument("--count", type=int, default=200_000)
     parser.add_argument("--concurrency", type=int, default=None)
-    parser.add_argument("--categories", nargs="+", default=ALL_CATEGORIES, choices=ALL_CATEGORIES)
+    parser.add_argument("--categories", nargs="+", default=ALL_CATEGORIES,
+                        choices=ALL_CATEGORIES)
     parser.add_argument("--output", default="data/raw")
     parser.add_argument("--config", default="data/generation/config.yaml")
     parser.add_argument("--resume", action="store_true")
@@ -97,16 +95,13 @@ async def main() -> None:
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-
     console = Console()
 
-    # Probe vLLM before starting so failures are visible immediately
     if args.generator == "vllm":
         gen_cfg = config.get("generation", {})
         base_url = gen_cfg.get("vllm_base_url", "http://localhost:8000/v1").rstrip("/")
         model = gen_cfg.get("model_vllm", "Qwen/Qwen2.5-72B-Instruct-AWQ")
-        ok = await probe_vllm(base_url, model, console)
-        if not ok:
+        if not await probe_vllm(base_url, model, console):
             sys.exit(1)
 
     progress = Progress(
@@ -120,33 +115,29 @@ async def main() -> None:
         TimeRemainingColumn(),
     )
 
-    tasks = []
+    jobs = []
     for cat in args.categories:
         already = count_existing(str(output_dir / f"{cat}.jsonl")) if args.resume else 0
-        remaining = max(0, args.count - already)
         task_id = progress.add_task(cat, total=args.count, completed=already, rate=0.0)
-        tasks.append((cat, args.count, remaining, task_id))
+        jobs.append((cat, args.count, already, task_id))
 
     console.print(f"[bold]Horizon Generator[/]  generator=[cyan]{args.generator}[/]  "
-                  f"target=[bold]{args.count:,}[/] per category  output=[dim]{output_dir}[/]\n")
+                  f"target=[bold]{args.count:,}[/]  "
+                  f"concurrency=[bold]{config['generation'].get('concurrency', 10)}[/]\n")
 
-    with Live(progress, refresh_per_second=2):
+    with Live(progress, refresh_per_second=2, console=console):
         coros = [
-            run_category(cat, target, remaining, args.generator, config,
+            run_category(cat, target, already, args.generator, config,
                          output_dir, args.resume, progress, task_id)
-            for cat, target, remaining, task_id in tasks
+            for cat, target, already, task_id in jobs
         ]
-        results = await asyncio.gather(*coros, return_exceptions=True)
+        results = await asyncio.gather(*coros)
 
     console.print("\n[bold green]Done![/]")
     total = 0
-    for r in results:
-        if isinstance(r, Exception):
-            console.print(f"  [red]error:[/] {r}")
-        else:
-            cat, n = r
-            console.print(f"  {cat:<22} [green]{n:,}[/]")
-            total += n
+    for cat, n in results:
+        console.print(f"  {cat:<22} [green]{n:,}[/]")
+        total += n
     console.print(f"\n  [bold]total  {total:,}[/]")
 
 
