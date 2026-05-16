@@ -52,14 +52,10 @@ async def run_category(cat: str, target: int, already: int, generator_type: str,
     generator = create_generator(generator_type, config)
     concurrency = config.get("generation", {}).get("concurrency", 10)
     start = time.monotonic()
-    last_n = [0]
 
     def on_progress(n_done: int, n_failed: int) -> None:
-        # Update display every 5 successes
-        if n_done >= last_n[0] + 5:
-            rate = n_done / max(time.monotonic() - start, 0.1)
-            progress.update(task_id, completed=already + n_done, rate=rate)
-            last_n[0] = n_done
+        rate = n_done / max(time.monotonic() - start, 0.1)
+        progress.update(task_id, completed=already + n_done, rate=rate, failed=n_failed)
 
     convs = await generate_batch(
         generator, RiskCategory(cat), remaining, config,
@@ -107,9 +103,10 @@ async def main() -> None:
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[bold]{task.description:<22}"),
-        BarColumn(bar_width=40),
+        BarColumn(bar_width=30),
         MofNCompleteColumn(),
         TextColumn("[green]{task.fields[rate]:.0f}/s[/]"),
+        TextColumn("[red]✗{task.fields[failed]}[/]"),
         TimeElapsedColumn(),
         TextColumn("eta"),
         TimeRemainingColumn(),
@@ -118,7 +115,7 @@ async def main() -> None:
     jobs = []
     for cat in args.categories:
         already = count_existing(str(output_dir / f"{cat}.jsonl")) if args.resume else 0
-        task_id = progress.add_task(cat, total=args.count, completed=already, rate=0.0)
+        task_id = progress.add_task(cat, total=args.count, completed=already, rate=0.0, failed=0)
         jobs.append((cat, args.count, already, task_id))
 
     console.print(f"[bold]Horizon Generator[/]  generator=[cyan]{args.generator}[/]  "
