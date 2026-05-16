@@ -36,6 +36,7 @@ from data.generation.generators import (
     ClaudeGenerator,
     ConversationGenerator,
     GPTGenerator,
+    VLLMGenerator,
 )
 from data.generation.prompts.base import create_conversation_prompt
 from data.generation.validators.quality import validate_conversation_quality
@@ -101,6 +102,13 @@ def create_generator(
                 "model_bedrock", "eu.anthropic.claude-3-5-sonnet-20241022-v2:0"
             ),
             region=gen_config.get("bedrock_region", "eu-west-3"),
+            temperature=gen_config.get("temperature", 0.9),
+            max_tokens=gen_config.get("max_tokens", 2000),
+        )
+    elif generator_type == "vllm":
+        return VLLMGenerator(
+            model=gen_config.get("model_vllm", "Qwen/Qwen2.5-72B-Instruct-AWQ"),
+            base_url=gen_config.get("vllm_base_url", "http://localhost:8000/v1"),
             temperature=gen_config.get("temperature", 0.9),
             max_tokens=gen_config.get("max_tokens", 2000),
         )
@@ -394,7 +402,7 @@ Examples:
         "--generator",
         type=str,
         default="claude",
-        choices=["claude", "openai", "bedrock"],
+        choices=["claude", "openai", "bedrock", "vllm"],
         help="LLM generator to use (default: claude)",
     )
 
@@ -437,6 +445,7 @@ Examples:
         print("Error: BEDROCK_API_KEY not found in environment", file=sys.stderr)
         print("Please set it in .env file or export it", file=sys.stderr)
         sys.exit(1)
+    # vllm: no API key needed — local server
 
     # Load configuration
     try:

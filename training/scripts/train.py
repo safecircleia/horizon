@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """QLoRA fine-tuning entry point for SafeCircle risk detection model.
 
+Uses TRL SFTTrainer with assistant_only_loss=True so loss is computed
+only on assistant completions, not on system/user prompt tokens.
+
 Usage:
     python -m training.scripts.train --config training/configs/h100.yaml
     python -m training.scripts.train --config training/configs/l4.yaml
@@ -15,13 +18,10 @@ from pathlib import Path
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import multiprocessing
-
 import torch
 import yaml
 from datasets import Dataset
 from dotenv import load_dotenv
-from transformers import DataCollatorForSeq2Seq, Trainer, TrainingArguments
 
 load_dotenv()
 
@@ -31,6 +31,7 @@ if os.getenv("HF_TOKEN"):
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+from trl import SFTConfig, SFTTrainer
 from training.model.loader import load_model_and_tokenizer
 
 
@@ -45,26 +46,11 @@ def _detect_hardware() -> dict:
     }
 
 
-def _load_jsonl_dataset(path: str, tokenizer, max_seq_length: int) -> Dataset:
+def _load_jsonl_dataset(path: str) -> Dataset:
+    """Load a messages-format JSONL file into a HuggingFace Dataset."""
     with open(path) as f:
         examples = [json.loads(line) for line in f if line.strip()]
-
-    num_proc = min(multiprocessing.cpu_count(), 20)
-    dataset = Dataset.from_list(examples)
-
-    def tokenize(batch):
-        out = tokenizer(batch["text"], truncation=True, max_length=max_seq_length, padding=False)
-        # mask prompt tokens so loss only computed on completions
-        out["labels"] = [ids[:] for ids in out["input_ids"]]
-        return out
-
-    dataset = dataset.map(
-        tokenize,
-        batched=True,
-        num_proc=num_proc,
-        remove_columns=dataset.column_names,
-    )
-    return dataset.filter(lambda x: len(x["input_ids"]) > 0, num_proc=num_proc)
+    return Dataset.from_list(examples)
 
 
 def main():
@@ -100,16 +86,13 @@ def main():
     print("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(config)
 
-    if train_cfg.get("gradient_checkpointing"):
-        model.gradient_checkpointing_enable()
-
     max_seq = data_cfg.get("max_seq_length", 2048)
     print(f"Loading datasets (max_seq={max_seq})...")
-    train_dataset = _load_jsonl_dataset(data_cfg["train_file"], tokenizer, max_seq)
-    eval_dataset = _load_jsonl_dataset(data_cfg["eval_file"], tokenizer, max_seq)
+    train_dataset = _load_jsonl_dataset(data_cfg["train_file"])
+    eval_dataset = _load_jsonl_dataset(data_cfg["eval_file"])
     print(f"Train: {len(train_dataset)} examples | Eval: {len(eval_dataset)} examples")
 
-    training_args = TrainingArguments(
+    sft_config = SFTConfig(
         output_dir=output_dir,
         max_steps=train_cfg["max_steps"],
         per_device_train_batch_size=train_cfg["per_device_train_batch_size"],
@@ -135,18 +118,26 @@ def main():
         report_to=train_cfg.get("report_to", "tensorboard"),
         dataloader_pin_memory=train_cfg.get("dataloader_pin_memory", False),
         dataloader_num_workers=train_cfg.get("dataloader_num_workers", 0),
-        dataloader_prefetch_factor=train_cfg.get("dataloader_prefetch_factor", 2) if train_cfg.get("dataloader_num_workers", 0) > 0 else None,
+        dataloader_prefetch_factor=(
+            train_cfg.get("dataloader_prefetch_factor", 2)
+            if train_cfg.get("dataloader_num_workers", 0) > 0
+            else None
+        ),
         torch_compile=train_cfg.get("torch_compile", False),
         torch_compile_backend=train_cfg.get("torch_compile_backend", "inductor"),
         optim=train_cfg.get("optim", "adamw_torch"),
+        # Core SFT settings: only compute loss on assistant turns
+        max_seq_length=max_seq,
+        assistant_only_loss=True,
+        dataset_text_field=None,  # use messages format, not a single text field
     )
 
-    trainer = Trainer(
+    trainer = SFTTrainer(
         model=model,
-        args=training_args,
+        args=sft_config,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, padding=True, pad_to_multiple_of=8),
+        processing_class=tokenizer,
     )
 
     print("Starting training...")

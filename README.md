@@ -2,131 +2,151 @@
 
 **SafeCircle Risk Detection Model Training System**
 
-Project Horizon trains custom AI models for privacy-preserving child safety risk detection. Starting from Llama 3.1 8B, the system fine-tunes on synthetic conversation data to detect seven risk categories (grooming, bullying, sexual content, isolation, personal info, platform migration, threats) with structured JSON output.
+Project Horizon trains custom AI models for privacy-preserving child safety risk detection. Fine-tuned from Llama 3.2 3B Instruct using QLoRA, the model detects seven risk categories (grooming, bullying, sexual content, isolation, personal info, platform migration, threats) and returns structured JSON — no free-text, no identity leakage.
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (requires uv)
+uv sync
 
-# Download dataset from HuggingFace (requires SafeCircle org access)
-export HF_TOKEN=your_token_here
-make download-data
+# Generate dataset locally on H100 (see Data Generation section)
+bash data/generation/scripts/generate_bulk.sh
 
-# Train model
-make train CONFIG=configs/base.yaml
+# Preprocess raw data into training format
+python -m training.scripts.preprocess --input data/raw --output data/processed
+
+# Train
+python -m training.scripts.train --config training/configs/h100.yaml
 
 # Evaluate
 make evaluate CHECKPOINT=experiments/latest/checkpoints/step-5000
 
 # Quantize for deployment
 make quantize MODEL=models/v1/full FORMAT=q4_k_m
-
-# Serve API
-make serve MODEL=models/v1/quantized/horizon-q4.gguf
 ```
 
 ## Project Structure
 
 ```
 horizon/
-├── data/              # Datasets (synthetic generation, raw, processed)
-├── training/          # Training scripts, configs, model definitions
-├── evaluation/        # Metrics, analysis, reports
-├── quantization/      # Model quantization pipelines
-├── inference/         # API, CLI, examples
-├── experiments/       # Training runs & logs
-├── models/            # Trained model artifacts
-├── notebooks/         # Jupyter notebooks
-├── tests/             # Unit & integration tests
-└── docs/              # Documentation
+├── data/
+│   ├── raw/               # Per-category JSONL (generated)
+│   ├── processed/         # train.jsonl + eval.jsonl (TRL messages format)
+│   └── generation/        # Generation pipeline (generators, prompts, scripts)
+├── training/
+│   ├── configs/           # h100.yaml, l4.yaml, quick.yaml
+│   ├── model/             # Model loading (QLoRA, 4-bit)
+│   └── scripts/           # preprocess.py, train.py, distill.py
+├── evaluation/            # Metrics, reports
+├── quantization/          # GGUF / ONNX export
+├── inference/             # API, CLI
+├── experiments/           # Training runs & checkpoints
+├── models/                # Trained model artifacts
+└── scripts/               # merge_lora.py, upload_to_hf.py, export_gguf.sh
 ```
 
 ## Key Features
 
 - **Privacy-First:** Synthetic data only, no real child messages
-- **Production-Ready:** Quantized INT4 models (~2GB) for flexible deployment
-- **High Accuracy:** Target >0.85 F1 overall, >0.90 F1 on critical categories
+- **Identity-Hardened:** 4 500+ adversarial jailbreak examples baked into training; the model always responds with a locked JSON error to off-task queries
+- **Correct Loss Masking:** TRL `SFTTrainer` with `assistant_only_loss=True` — loss computed only on assistant completions, not on system/user tokens
+- **Local Data Generation:** vLLM generator for H100 (~4–18k tok/s), no cloud API costs for large runs
+- **Production-Ready:** Quantized INT4 models for flexible deployment
 - **Deployment-Agnostic:** Exports to GGUF, ONNX, vLLM, Ollama formats
-- **Comprehensive Evaluation:** Per-category metrics, ablation studies, error analysis
 
-## Documentation
+## Data Generation
 
-- [Design Document](docs/superpowers/specs/2026-04-09-horizon-design.md) - Complete system architecture and methodology
-- [Training Guide](docs/training.md) - Step-by-step training instructions (coming soon)
-- [API Reference](docs/api.md) - REST API and CLI documentation (coming soon)
-- [Model Card](models/v1.0/metadata/model_card.md) - Model capabilities and limitations (after training)
+### Local vLLM (recommended for large runs)
+
+Run everything on the H100 at zero API cost:
+
+```bash
+# 1. Start vLLM server
+vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
+    --tensor-parallel-size 1 \
+    --max-model-len 4096 \
+    --gpu-memory-utilization 0.92 \
+    --enable-chunked-prefill \
+    --max-num-batched-tokens 8192 \
+    --port 8000
+
+# 2. Generate ~100GB across all 8 categories (parallelised)
+COUNT=200000 CONCURRENCY=150 bash data/generation/scripts/generate_bulk.sh
+
+# Resume a partial run
+bash data/generation/scripts/generate_bulk.sh --resume
+```
+
+**Model tradeoffs:**
+
+| Model | VRAM | ~tok/s | Quality | 100GB ETA |
+|---|---|---|---|---|
+| `Qwen2.5-72B-Instruct-AWQ` | 40GB | 4–5k | High | ~56h |
+| `Qwen2.5-7B-Instruct` | 16GB | 18k | Good | ~14h |
+
+Switch model in `data/generation/config.yaml` → `model_vllm`.
+
+### Single-category generation
+
+```bash
+python -m data.generation.scripts.generate \
+    --category grooming \
+    --count 50000 \
+    --generator vllm \
+    --output data/raw/grooming.jsonl \
+    --resume
+```
+
+### Cloud generators (smaller runs)
+
+```bash
+# Claude / OpenAI / Amazon Bedrock
+python -m data.generation.scripts.generate \
+    --category bullying --count 1000 --generator bedrock
+```
+
+## Training
+
+### Preprocess
+
+Converts raw JSONL → TRL `messages` format and injects adversarial hardening examples:
+
+```bash
+python -m training.scripts.preprocess \
+    --input data/raw \
+    --output data/processed \
+    --adversarial-ratio 0.10   # 10% jailbreak hardening examples
+```
+
+### Train (H100)
+
+```bash
+python -m training.scripts.train --config training/configs/h100.yaml
+```
+
+Configs available: `h100.yaml` (80GB, bf16), `l4.yaml` (24GB, QLoRA 4-bit), `quick.yaml` (smoke test).
 
 ## Dataset
 
 Training data is stored as a private HuggingFace dataset at [`safecircleai/horizon-training-data`](https://huggingface.co/datasets/safecircleai/horizon-training-data).
 
-The dataset contains two configurations:
-- **`raw`** — Per-category splits (grooming, bullying, sexual_content, isolation, personal_info, platform_migration, threats, benign) with full metadata
-- **`processed`** — Llama 3.1 instruction-formatted train/eval splits ready for fine-tuning
-
-**Access requires membership in the [safecircleai HuggingFace org](https://huggingface.co/safecircleai).** Contact the team to request access.
-
-```bash
-# Download all data (set HF_TOKEN first)
-export HF_TOKEN=hf_...
-make download-data
-
-# Download only processed splits
-make download-data SPLIT=processed
-
-# Upload updated data (maintainers only)
-make upload-data
-```
-
-You can also load the dataset directly in Python:
+**Access requires membership in the [safecircleai HuggingFace org](https://huggingface.co/safecircleai).**
 
 ```python
 from datasets import load_dataset
 
-# Processed splits (for training)
 ds = load_dataset("safecircleai/horizon-training-data", name="processed", token="hf_...")
 train, eval = ds["train"], ds["eval"]
-
-# Raw per-category data
-raw = load_dataset("safecircleai/horizon-training-data", name="raw", token="hf_...")
-grooming_samples = raw["grooming"]
 ```
 
 ## Requirements
 
 - Python 3.10+
-- CUDA-capable GPU (A100 40GB recommended, RTX 4090 24GB minimum)
-- 100GB disk space (datasets + models)
-- HuggingFace token with SafeCircle org access (for dataset download)
-- Claude/GPT-4 API access (for data generation only)
-
-## Timeline
-
-- **Weeks 1-2:** Foundation (data generation pipeline, 10K dataset)
-- **Weeks 3-4:** Training infrastructure (baseline model)
-- **Weeks 5-7:** Full training (50K dataset, v1.0 model)
-- **Week 8:** Quantization & optimization
-- **Week 9:** API & documentation
-- **Week 10+:** Iteration & refinement
-
-## Budget
-
-- Data generation: $200 (API calls)
-- Training: $150 (GPU compute)
-- Testing: $50
-- **Total: ~$400**
-
-## Risk Categories
-
-1. **Grooming** - Trust building, boundary testing, secrecy
-2. **Bullying** - Harassment, threats, cyberbullying
-3. **Sexual Content** - Explicit messages, inappropriate requests
-4. **Isolation/Control** - Controlling behavior, network isolation
-5. **Personal Info** - Requests for identifying information
-6. **Platform Migration** - Moving to less monitored platforms
-7. **Threats/Violence** - Violent threats, dangerous challenges
+- [uv](https://github.com/astral-sh/uv) package manager
+- CUDA-capable GPU (H100 for full runs, L4/A10G for QLoRA, CPU for smoke tests)
+- HuggingFace token with SafeCircle org access (dataset download/upload)
+- vLLM installed on the training server (for local data generation)
 
 ## Model Output Format
 
@@ -134,23 +154,31 @@ grooming_samples = raw["grooming"]
 {
   "risk_level": "high",
   "categories": ["grooming", "personal_info"],
-  "confidence": 0.87,
-  "matched_terms": ["our secret", "don't tell", "send photo"],
-  "reasoning": "Adult establishing secrecy while requesting personal media",
-  "message_risks": [
-    {"index": 0, "risk": "low", "categories": []},
-    {"index": 1, "risk": "high", "categories": ["grooming", "personal_info"]}
-  ]
+  "confidence": 0.91,
+  "matched_terms": [],
+  "reasoning": "Adult establishing secrecy while requesting personal media"
 }
 ```
 
+Off-task or jailbreak queries always return:
+
+```json
+{"error": "I only analyze conversations for child safety risks."}
+```
+
+## Risk Categories
+
+1. **Grooming** — Trust building, boundary testing, secrecy requests
+2. **Bullying** — Harassment, threats, cyberbullying
+3. **Sexual Content** — Explicit messages, inappropriate requests
+4. **Isolation/Control** — Controlling behavior, network isolation
+5. **Personal Info** — Requests for identifying information
+6. **Platform Migration** — Moving to less monitored platforms
+7. **Threats/Violence** — Violent threats, dangerous challenges
+
 ## License
 
-[To be determined - pending SafeCircle legal review]
-
-## Contributing
-
-Project Horizon is currently in active development. Contribution guidelines will be published after v1.0 release.
+[To be determined — pending SafeCircle legal review]
 
 ## Contact
 
@@ -160,4 +188,4 @@ For questions about SafeCircle or Project Horizon, visit https://safecircle.tech
 
 **Status:** In Development  
 **Version:** 0.1.0 (Pre-release)  
-**Last Updated:** 2026-04-09
+**Last Updated:** 2026-05-16

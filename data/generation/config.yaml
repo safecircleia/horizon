@@ -24,11 +24,14 @@ generation:
   model_openai: "gpt-4o-2024-08-06"
   model_bedrock: "eu.amazon.nova-micro-v1:0"
   bedrock_region: "eu-west-3"
+  # Local vLLM — change model to Qwen2.5-7B-Instruct for ~4x speed at lower quality
+  model_vllm: "Qwen/Qwen2.5-72B-Instruct-AWQ"
+  vllm_base_url: "http://localhost:8000/v1"
   temperature: 0.9
   max_tokens: 2000
   batch_size: 10
   retry_attempts: 3
-  concurrency: 10
+  concurrency: 10  # overridden to 150 by generate_bulk.sh for vLLM
 
 # Quality thresholds
 quality:
