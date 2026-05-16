@@ -259,46 +259,41 @@ async def generate_batch(
     severity_dist = config.get("severity_distribution", {})
     conversations: List[SyntheticConversation] = []
     failed = 0
-    done = asyncio.Event()
+    stop = asyncio.Event()
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def worker():
+    async def _run(pbar=None):
         nonlocal failed
-        while True:
-            if len(conversations) >= count:
-                done.set()
-                return
-            severity = select_severity(category, severity_dist)
-            async with semaphore:
-                result = await generate_conversation(generator, category, severity, config)
-            if result is not None:
-                conversations.append(result)
-            else:
-                failed += 1
-            if on_progress is not None:
-                on_progress(len(conversations), failed)
-            elif pbar is not None:
+
+        async def worker():
+            nonlocal failed
+            while not stop.is_set():
+                severity = select_severity(category, severity_dist)
+                async with semaphore:
+                    result = await generate_conversation(generator, category, severity, config)
+                if stop.is_set():
+                    return
                 if result is not None:
+                    conversations.append(result)
+                    if len(conversations) >= count:
+                        stop.set()
+                        return
+                else:
+                    failed += 1
+                if on_progress is not None:
+                    on_progress(len(conversations), failed)
+                elif pbar is not None and result is not None:
                     pbar.update(1)
-            if len(conversations) >= count:
-                done.set()
-                return
+
+        worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+        await asyncio.gather(*worker_tasks, return_exceptions=True)
 
     if on_progress is not None:
-        pbar = None
-        workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
-        await done.wait()
-        for w in workers:
-            w.cancel()
-        await asyncio.gather(*workers, return_exceptions=True)
+        await _run()
     else:
         with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
-                  position=tqdm_position, leave=True) as pbar:
-            workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
-            await done.wait()
-            for w in workers:
-                w.cancel()
-            await asyncio.gather(*workers, return_exceptions=True)
+                  position=tqdm_position, leave=True) as bar:
+            await _run(bar)
 
     return conversations[:count]
 
