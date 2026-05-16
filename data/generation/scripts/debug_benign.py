@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from data.generation.scripts.generate import create_generator, load_config
 from data.generation.prompts.benign import create_benign_prompt
-from data.generation.prompts.threats import create_threat_prompt
+from data.generation.prompts.threats import create_threats_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel, Message, ConversationLabel, SyntheticConversation
 from data.generation.validators.quality import validate_conversation_quality
 
@@ -41,10 +41,8 @@ async def main():
     print("=== Quality validation ===")
     is_valid, errors = validate_conversation_quality(
         messages,
-        min_length=quality_config.get("min_conversation_length", 4),
-        max_length=quality_config.get("max_conversation_length", 30),
-        min_unique_tokens=quality_config.get("min_unique_tokens", 20),
-        allow_consecutive_roles=True,
+        min_length=quality_config.get("min_conversation_length", 8),
+        max_length=quality_config.get("max_conversation_length", 40),
     )
     print(f"  valid={is_valid} errors={errors}")
     if not is_valid:
@@ -83,14 +81,14 @@ async def concurrent():
     """Test 50 concurrent requests for both benign and threats to show failure breakdown."""
     config = load_config("data/generation/config.yaml")
     # Use raw thresholds, not the config, so we can see what's actually failing
-    MIN_LEN, MAX_LEN, MIN_TOKENS = 4, 30, 20
+    MIN_LEN, MAX_LEN = 8, 40
 
     for category, sev in [(RiskCategory.BENIGN, RiskLevel.NONE), (RiskCategory.THREATS, RiskLevel.HIGH)]:
         gen = create_generator("vllm", config)
         fail_reasons: dict = {}
 
         async def one(i, cat=category, severity=sev):
-            prompt = create_benign_prompt(15, 8) if cat == RiskCategory.BENIGN else create_threat_prompt(severity, 15, 8)
+            prompt = create_benign_prompt(15, 10) if cat == RiskCategory.BENIGN else create_threats_prompt(severity, 15, 10)
             result = await gen.generate(prompt)
             if not result.success:
                 return f"HTTP:{result.error[:60]}"
@@ -99,7 +97,6 @@ async def concurrent():
                 messages = [Message(**m) for m in raw]
                 is_valid, errors = validate_conversation_quality(
                     messages, min_length=MIN_LEN, max_length=MAX_LEN,
-                    min_unique_tokens=MIN_TOKENS, allow_consecutive_roles=True,
                 )
                 if not is_valid:
                     return f"QUALITY:{errors[0]}"

@@ -170,7 +170,7 @@ async def generate_conversation(
     for attempt in range(retry_attempts):
         # Random parameters
         child_age = random.randint(13, 17)
-        num_messages = random.randint(5, 15)
+        num_messages = random.randint(8, 15)
 
         # Create prompt
         _PROMPT_BUILDERS = {
