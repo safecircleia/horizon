@@ -39,6 +39,7 @@ from data.generation.generators import (
     VLLMGenerator,
 )
 from data.generation.prompts.base import create_conversation_prompt
+from data.generation.prompts.benign import create_benign_prompt
 from data.generation.validators.quality import validate_conversation_quality
 
 # Local imports
@@ -166,12 +167,15 @@ async def generate_conversation(
         num_messages = random.randint(5, 15)
 
         # Create prompt
-        prompt = create_conversation_prompt(
-            category=category,
-            severity=severity,
-            child_age=child_age,
-            num_messages=num_messages,
-        )
+        if category == RiskCategory.BENIGN:
+            prompt = create_benign_prompt(child_age=child_age, num_messages=num_messages)
+        else:
+            prompt = create_conversation_prompt(
+                category=category,
+                severity=severity,
+                child_age=child_age,
+                num_messages=num_messages,
+            )
 
         # Generate conversation
         result = await generator.generate(prompt)
