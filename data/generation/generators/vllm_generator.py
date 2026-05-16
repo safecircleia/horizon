@@ -23,7 +23,7 @@ from data.generation.generators.base import ConversationGenerator, GenerationRes
 from data.generation.prompts.base import ConversationPrompt
 
 _DEFAULT_BASE_URL = "http://localhost:8000/v1"
-_DEFAULT_MODEL = "Qwen/Qwen2.5-72B-Instruct-AWQ"
+_DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 
 
 class VLLMGenerator(ConversationGenerator):

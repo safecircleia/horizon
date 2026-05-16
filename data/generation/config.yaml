@@ -24,8 +24,9 @@ generation:
   model_openai: "gpt-4o-2024-08-06"
   model_bedrock: "eu.amazon.nova-micro-v1:0"
   bedrock_region: "eu-west-3"
-  # Local vLLM — change model to Qwen2.5-7B-Instruct for ~4x speed at lower quality
-  model_vllm: "Qwen/Qwen2.5-72B-Instruct-AWQ"
+  # Local vLLM — Qwen2.5-7B gives ~4x the throughput of 72B at acceptable quality
+  # for structured JSON conversation generation. Upgrade to 14B if diversity suffers.
+  model_vllm: "Qwen/Qwen2.5-7B-Instruct"
   vllm_base_url: "http://localhost:8000/v1"
   temperature: 0.9
   max_tokens: 2000

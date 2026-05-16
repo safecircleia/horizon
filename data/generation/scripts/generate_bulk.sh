@@ -6,12 +6,11 @@
 #
 # Usage:
 #   # First: start vLLM server on H100
-#   vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
-#       --tensor-parallel-size 1 \
+#   vllm serve Qwen/Qwen2.5-7B-Instruct \
 #       --max-model-len 4096 \
-#       --gpu-memory-utilization 0.92 \
+#       --gpu-memory-utilization 0.85 \
 #       --enable-chunked-prefill \
-#       --max-num-batched-tokens 8192 \
+#       --max-num-batched-tokens 16384 \
 #       --port 8000
 #
 #   # Then run this script (from project root):
@@ -63,12 +62,11 @@ echo "Checking vLLM server..."
 if ! curl -sf "${VLLM_BASE_URL}/models" > /dev/null; then
     echo "ERROR: vLLM server not reachable at ${VLLM_BASE_URL}"
     echo "Start it with:"
-    echo "  vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \\"
-    echo "      --tensor-parallel-size 1 \\"
+    echo "  vllm serve Qwen/Qwen2.5-7B-Instruct \\"
     echo "      --max-model-len 4096 \\"
-    echo "      --gpu-memory-utilization 0.92 \\"
+    echo "      --gpu-memory-utilization 0.85 \\"
     echo "      --enable-chunked-prefill \\"
-    echo "      --max-num-batched-tokens 8192 \\"
+    echo "      --max-num-batched-tokens 16384 \\"
     echo "      --port 8000"
     exit 1
 fi
