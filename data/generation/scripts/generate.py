@@ -22,7 +22,7 @@ import random
 import sys
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import jsonlines
 
@@ -248,15 +248,19 @@ async def generate_batch(
     count: int,
     config: Dict[str, Any],
     concurrency: int = 10,
+    on_progress: Optional[Callable[[int], None]] = None,
     tqdm_position: int = 0,
 ) -> List[SyntheticConversation]:
-    """Generate a batch of conversations with a live worker pool."""
+    """Generate a batch of conversations with a live worker pool.
+
+    on_progress: optional callback called with (n_completed_so_far) on each success.
+                 When provided, tqdm is suppressed (caller owns progress display).
+    """
     severity_dist = config.get("severity_distribution", {})
     conversations: List[SyntheticConversation] = []
     semaphore = asyncio.Semaphore(concurrency)
     queue: asyncio.Queue = asyncio.Queue()
 
-    # Pre-fill queue with enough work (extra to account for failures)
     needed = int(count * 1.3) + concurrency
     for _ in range(needed):
         await queue.put(select_severity(category, severity_dist))
@@ -274,17 +278,25 @@ async def generate_batch(
             queue.task_done()
             if result is not None:
                 conversations.append(result)
-                pbar.update(1)
+                if on_progress is not None:
+                    on_progress(len(conversations))
+                elif pbar is not None:
+                    pbar.update(1)
             if len(conversations) >= count:
                 return
-            # Refill queue if running low
             if queue.empty():
                 await queue.put(select_severity(category, severity_dist))
 
-    with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
-              position=tqdm_position, leave=True) as pbar:
+    if on_progress is not None:
+        # Caller drives the display — run workers without tqdm
+        pbar = None
         workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
         await asyncio.gather(*workers)
+    else:
+        with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
+                  position=tqdm_position, leave=True) as pbar:
+            workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
+            await asyncio.gather(*workers)
 
     return conversations[:count]
 
