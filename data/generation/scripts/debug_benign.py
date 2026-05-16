@@ -4,7 +4,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from data.generation.scripts.generate import create_generator, load_config
-from data.generation.prompts.base import create_conversation_prompt
+from data.generation.prompts.benign import create_benign_prompt
+from data.generation.prompts.threats import create_threat_prompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel, Message, ConversationLabel, SyntheticConversation
 from data.generation.validators.quality import validate_conversation_quality
 
@@ -12,7 +13,7 @@ async def main():
     config = load_config("data/generation/config.yaml")
     quality_config = config.get("quality", {})
     gen = create_generator("vllm", config)
-    prompt = create_conversation_prompt(RiskCategory.BENIGN, RiskLevel.NONE, 15, 8)
+    prompt = create_benign_prompt(15, 8)
     result = await gen.generate(prompt)
 
     print("=== HTTP result ===")
@@ -89,7 +90,7 @@ async def concurrent():
         fail_reasons: dict = {}
 
         async def one(i, cat=category, severity=sev):
-            prompt = create_conversation_prompt(cat, severity, 15, 8)
+            prompt = create_benign_prompt(15, 8) if cat == RiskCategory.BENIGN else create_threat_prompt(severity, 15, 8)
             result = await gen.generate(prompt)
             if not result.success:
                 return f"HTTP:{result.error[:60]}"
