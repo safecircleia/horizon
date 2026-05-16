@@ -1,5 +1,3 @@
-import pytest
-import json
 from data.generation.prompts.base import (
     ConversationPrompt,
     format_system_prompt,

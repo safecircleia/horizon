@@ -7,6 +7,7 @@ from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 @dataclass
 class ConversationPrompt:
+    """Prompt for conversation generation, passed to a generator."""
     category: RiskCategory
     severity: RiskLevel
     system_prompt: str
