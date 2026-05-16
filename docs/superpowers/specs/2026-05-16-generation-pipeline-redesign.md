@@ -55,6 +55,8 @@ Output only valid JSON. No explanations outside the JSON.
 - One hardcoded few-shot example baked into each prompt
 - Benign prompt never uses the words "risk", "safety", or "severity"
 - Each category is fully self-contained — no shared `additional_context` injection
+- Every prompt includes a **persona seed** (randomised name, platform — Discord/Instagram/Snapchat/WhatsApp, relationship type — classmate/stranger/online friend) so conversations feel grounded, not generic
+- Minimum message count raised to **8** (from 5); prompts explicitly ask for a conversation with a clear arc: opening → development → resolution or escalation
 
 ---
 
@@ -95,6 +97,7 @@ Output only valid JSON. No explanations outside the JSON.
 - Always pass `max_tokens=512` to mitigate Qwen2.5 non-termination bug with constrained decoding
 - Schema must stay flat (≤ 2 nesting levels, ≤ 6 fields) for reliable 7B compliance
 - One few-shot example per category prompt — do not add more (increases prompt length, reduces throughput)
+- Persona seeds (name, platform, relationship) are randomised at call time in the prompt builder, not hardcoded
 
 ---
 
