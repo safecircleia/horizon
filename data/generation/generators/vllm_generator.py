@@ -36,6 +36,7 @@ class VLLMGenerator(ConversationGenerator):
         temperature: float = 0.9,
         max_tokens: int = 2000,
         timeout: float = 120.0,
+        max_connections: int = 200,
     ):
         self.model = model
         self.base_url = (base_url or os.getenv("VLLM_BASE_URL", _DEFAULT_BASE_URL)).rstrip("/")
@@ -43,6 +44,10 @@ class VLLMGenerator(ConversationGenerator):
         self.max_tokens = max_tokens
         self.timeout = timeout
         self._endpoint = f"{self.base_url}/chat/completions"
+        # Single persistent client shared across all requests — avoids opening
+        # a new TCP connection per request which exhausts OS limits at high concurrency
+        limits = httpx.Limits(max_connections=max_connections, max_keepalive_connections=max_connections)
+        self._client = httpx.AsyncClient(timeout=timeout, limits=limits)
 
     @property
     def name(self) -> str:
@@ -60,10 +65,9 @@ class VLLMGenerator(ConversationGenerator):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(self._endpoint, json=payload)
-                response.raise_for_status()
-                data = response.json()
+            response = await self._client.post(self._endpoint, json=payload)
+            response.raise_for_status()
+            data = response.json()
 
             text = data["choices"][0]["message"]["content"]
             conversation = self._parse_json_response(text)
