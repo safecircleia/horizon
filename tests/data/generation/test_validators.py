@@ -90,74 +90,9 @@ def test_conversation_minimum_length():
 
 
 from data.generation.validators.quality import (
-    validate_conversation_length,
-    validate_vocabulary_diversity,
-    validate_timestamp_progression,
     validate_conversation_quality
 )
 
-
-def test_validate_conversation_length_valid():
-    """Test conversation length validation passes."""
-    messages = [
-        Message(role="sent", content="hi", timestamp=1000),
-        Message(role="received", content="hello", timestamp=1001),
-        Message(role="sent", content="how are you", timestamp=1002),
-        Message(role="received", content="good thanks", timestamp=1003)
-    ]
-    is_valid, error = validate_conversation_length(messages, min_length=2, max_length=30)
-    assert is_valid
-    assert error is None
-
-
-def test_validate_conversation_length_too_short():
-    """Test conversation length validation fails for too short."""
-    messages = [Message(role="sent", content="hi", timestamp=1000)]
-    is_valid, error = validate_conversation_length(messages, min_length=2, max_length=30)
-    assert not is_valid
-    assert "too short" in error.lower()
-
-
-def test_validate_vocabulary_diversity_valid():
-    """Test vocabulary diversity validation passes."""
-    messages = [
-        Message(role="sent", content="hey whats up", timestamp=1000),
-        Message(role="received", content="not much just chilling", timestamp=1001),
-        Message(role="sent", content="cool wanna play some games later", timestamp=1002)
-    ]
-    is_valid, error = validate_vocabulary_diversity(messages, min_unique_tokens=5)
-    assert is_valid
-
-
-def test_validate_vocabulary_diversity_too_repetitive():
-    """Test vocabulary diversity validation fails for repetitive content."""
-    messages = [
-        Message(role="sent", content="hi hi hi hi hi", timestamp=1000),
-        Message(role="received", content="hi hi hi hi hi", timestamp=1001)
-    ]
-    is_valid, error = validate_vocabulary_diversity(messages, min_unique_tokens=10)
-    assert not is_valid
-
-
-def test_validate_timestamp_progression_valid():
-    """Test timestamp validation passes for increasing timestamps."""
-    messages = [
-        Message(role="sent", content="hi", timestamp=1000),
-        Message(role="received", content="hello", timestamp=1005),
-        Message(role="sent", content="how are you", timestamp=1020)
-    ]
-    is_valid, error = validate_timestamp_progression(messages)
-    assert is_valid
-
-
-def test_validate_timestamp_progression_invalid():
-    """Test timestamp validation fails for non-increasing timestamps."""
-    messages = [
-        Message(role="sent", content="hi", timestamp=1000),
-        Message(role="received", content="hello", timestamp=999)  # Goes backward
-    ]
-    is_valid, error = validate_timestamp_progression(messages)
-    assert not is_valid
 
 
 def test_validate_conversation_quality_all_checks():
@@ -166,8 +101,53 @@ def test_validate_conversation_quality_all_checks():
         Message(role="sent", content="hey hows it going what are you up to today", timestamp=1000),
         Message(role="received", content="pretty good just playing some minecraft on the server", timestamp=1005),
         Message(role="sent", content="nice that sounds fun what server are you playing on", timestamp=1020),
-        Message(role="received", content="just a private one with some friends from school", timestamp=1025)
+        Message(role="received", content="just a private one with some friends from school", timestamp=1025),
+        Message(role="sent", content="that sounds awesome do you play every day", timestamp=1030),
+        Message(role="received", content="pretty much yeah its a lot of fun", timestamp=1035),
+        Message(role="sent", content="maybe i should join sometime", timestamp=1040),
+        Message(role="received", content="yeah you totally should", timestamp=1045),
     ]
     is_valid, errors = validate_conversation_quality(messages)
     assert is_valid
     assert len(errors) == 0
+
+
+def test_quality_passes_valid_conversation():
+    messages = [
+        Message(role="sent", content="hey whats up", timestamp=0),
+        Message(role="received", content="not much just chilling", timestamp=0),
+        Message(role="sent", content="wanna play later?", timestamp=0),
+        Message(role="received", content="sure what time", timestamp=0),
+        Message(role="sent", content="like 5pm", timestamp=0),
+        Message(role="received", content="cool see you then", timestamp=0),
+        Message(role="sent", content="awesome", timestamp=0),
+        Message(role="received", content="👍", timestamp=0),
+    ]
+    is_valid, errors = validate_conversation_quality(messages)
+    assert is_valid
+    assert errors == []
+
+
+def test_quality_fails_too_few_messages():
+    messages = [
+        Message(role="sent", content="hi", timestamp=0),
+        Message(role="received", content="hey", timestamp=0),
+    ]
+    is_valid, errors = validate_conversation_quality(messages)
+    assert not is_valid
+    assert any("short" in e.lower() or "length" in e.lower() for e in errors)
+
+
+def test_quality_fails_invalid_role():
+    messages = [
+        Message.model_construct(role="unknown", content="hi", timestamp=0),
+        Message(role="received", content="hey", timestamp=0),
+        Message(role="sent", content="sup", timestamp=0),
+        Message(role="received", content="nm", timestamp=0),
+        Message(role="sent", content="cool", timestamp=0),
+        Message(role="received", content="yeah", timestamp=0),
+        Message(role="sent", content="ok", timestamp=0),
+        Message(role="received", content="k", timestamp=0),
+    ]
+    is_valid, errors = validate_conversation_quality(messages)
+    assert not is_valid
