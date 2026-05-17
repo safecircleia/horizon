@@ -132,6 +132,7 @@ def main():
         max_length=max_seq,
         completion_only_loss=True,
         dataset_text_field=None,  # use messages format, not a single text field
+        dataset_kwargs={"cache_dir": data_cfg.get("cache_dir", "data/.tokenized_cache")},
     )
 
     trainer = SFTTrainer(

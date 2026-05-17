@@ -56,6 +56,7 @@ data:
   eval_file: "data/processed/eval.jsonl"
   train_split: 0.9
   max_seq_length: 4096
+  cache_dir: "data/.tokenized_cache"
 
 stages:
   stage1:
