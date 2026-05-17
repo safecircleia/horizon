@@ -126,9 +126,11 @@ def main():
         torch_compile=train_cfg.get("torch_compile", False),
         torch_compile_backend=train_cfg.get("torch_compile_backend", "inductor"),
         optim=train_cfg.get("optim", "adamw_torch"),
-        # Core SFT settings: only compute loss on assistant turns
+        # Compute loss only on assistant turns.
+        # assistant_only_loss requires {% generation %} markers (not in Llama-3.2 template);
+        # completion_only_loss with the Llama-3.2 assistant header achieves the same effect.
         max_length=max_seq,
-        assistant_only_loss=True,
+        completion_only_loss=True,
         dataset_text_field=None,  # use messages format, not a single text field
     )
 
