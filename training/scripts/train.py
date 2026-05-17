@@ -127,7 +127,7 @@ def main():
         torch_compile_backend=train_cfg.get("torch_compile_backend", "inductor"),
         optim=train_cfg.get("optim", "adamw_torch"),
         # Core SFT settings: only compute loss on assistant turns
-        max_seq_length=max_seq,
+        max_length=max_seq,
         assistant_only_loss=True,
         dataset_text_field=None,  # use messages format, not a single text field
     )
