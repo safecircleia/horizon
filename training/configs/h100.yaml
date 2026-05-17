@@ -47,7 +47,7 @@ training:
   dataloader_num_workers: 20
   dataloader_pin_memory: true
   dataloader_prefetch_factor: 4
-  torch_compile: true
+  torch_compile: false
   torch_compile_backend: "inductor"
   torch_compile_mode: "max-autotune"
 
