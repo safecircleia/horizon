@@ -192,6 +192,23 @@ def main():
     if args.max_samples:
         examples = examples[:args.max_samples]
 
+    # Convert messages format → text format if needed
+    if examples and "messages" in examples[0] and "text" not in examples[0]:
+        print("Converting messages format to text...")
+        for ex in examples:
+            ex["text"] = tokenizer.apply_chat_template(
+                ex["messages"], tokenize=False, add_generation_prompt=False
+            )
+            if "label" not in ex:
+                # Extract label from assistant message content
+                for msg in reversed(ex["messages"]):
+                    if msg["role"] == "assistant":
+                        try:
+                            ex["label"] = json.loads(msg["content"])
+                        except json.JSONDecodeError:
+                            ex["label"] = {"risk_level": "none", "categories": []}
+                        break
+
     if args.debug:
         sample = examples[:args.debug]
         prompts = [_extract_prompt(ex["text"]) for ex in sample]
