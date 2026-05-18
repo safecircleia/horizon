@@ -179,6 +179,26 @@ def main():
     train_examples = load_jsonl(data_cfg["train_file"])
     val_examples = load_jsonl(data_cfg["eval_file"])
 
+    # Convert messages format → text format if needed
+    def _ensure_text(examples, tokenizer):
+        if examples and "messages" in examples[0] and "text" not in examples[0]:
+            for ex in examples:
+                ex["text"] = tokenizer.apply_chat_template(
+                    ex["messages"], tokenize=False, add_generation_prompt=False
+                )
+                if "label" not in ex:
+                    for msg in reversed(ex["messages"]):
+                        if msg["role"] == "assistant":
+                            try:
+                                ex["label"] = json.loads(msg["content"])
+                            except json.JSONDecodeError:
+                                ex["label"] = {"risk_level": "none", "categories": []}
+                            break
+        return examples
+
+    train_examples = _ensure_text(train_examples, teacher_tokenizer)
+    val_examples = _ensure_text(val_examples, teacher_tokenizer)
+
     print("Building soft labels from stored labels (no inference needed)...")
     train_with_soft = []
     for ex in tqdm(train_examples, desc="Soft labels", unit="ex"):
