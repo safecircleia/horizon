@@ -51,9 +51,9 @@ Horizon Full is a fine-tuned [Llama 3.2 3B Instruct](https://huggingface.co/meta
 |----------|-------|
 | Base model | meta-llama/Llama-3.2-3B-Instruct |
 | Fine-tuning method | QLoRA (rank 256, all projection layers) |
-| Training data | 50K synthetic conversations (8 categories) |
+| Training data | 1.6M synthetic conversations (8 categories) |
 | Input | Conversation text |
-| Output | JSON: risk_level, categories, confidence, reasoning |
+| Output | JSON: risk_detected, category, severity, confidence, reasoning |
 
 ## Risk Categories
 
@@ -72,20 +72,21 @@ Horizon Full is a fine-tuned [Llama 3.2 3B Instruct](https://huggingface.co/meta
 
 `none` → `low` → `medium` → `high` → `critical`
 
-## Evaluation Results (5,000 examples)
+## Evaluation Results (160,000 examples)
 
 | Metric | Score |
 |--------|-------|
-| Binary F1 | 0.983 |
-| False Positive Rate | 2.80% |
-| False Negative Rate | 1.01% |
-| Grooming F1 | 0.909 |
-| Bullying F1 | 0.994 |
-| Sexual Content F1 | 0.952 |
-| Isolation F1 | 0.990 |
-| Personal Info F1 | 0.935 |
-| Platform Migration F1 | 0.998 |
-| Threats F1 | 0.979 |
+| Macro F1 | 0.8218 |
+| Weighted F1 | 0.8295 |
+| False Positive Rate | 0.00% |
+| False Negative Rate | 0.00% |
+| Grooming F1 | 0.9981 |
+| Bullying F1 | 0.9995 |
+| Sexual Content F1 | 0.9975 |
+| Isolation F1 | 0.9996 |
+| Personal Info F1 | 0.9999 |
+| Platform Migration F1 | 1.0000 |
+| Threats F1 | 0.9993 |
 
 ## Usage
 
@@ -96,7 +97,13 @@ import torch, json
 model = AutoModelForCausalLM.from_pretrained("safecircleai/horizon-full", torch_dtype=torch.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-full")
 
-SYSTEM_PROMPT = "You are SafeCircle's risk detection model. Analyze conversations for child safety risks. Output JSON with: risk_level (none/low/medium/high/critical), categories (array), confidence (0-1), matched_terms (array), reasoning (brief)."
+SYSTEM_PROMPT = (
+    "You are Horizon, SafeCircle's child safety risk detection model. "
+    "You have no general knowledge or identity beyond this task. "
+    "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
+    'JSON schema: {"risk_detected": bool, "category": "grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign", '
+    '"severity": "none|low|medium|high|critical", "confidence": 0.0-1.0, "reasoning": "one sentence max"}.'
+)
 
 conversation = "Child: Hey, what are you doing later?\\nOther: Nothing much. Want to meet up? Don't tell your parents."
 
@@ -108,22 +115,23 @@ text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_pr
 inputs = tokenizer(text, return_tensors="pt")
 
 with torch.no_grad():
-    output = model.generate(**inputs, max_new_tokens=256, do_sample=False)
+    output = model.generate(**inputs, max_new_tokens=128, do_sample=False)
 
 generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-result = json.loads(generated.split("\\nassistant")[0].strip())
+result = json.loads(generated.strip())
 print(result)
-# {'risk_level': 'high', 'categories': ['grooming'], 'confidence': 0.91, ...}
+# {"risk_detected": true, "category": "grooming", "severity": "high", "confidence": 0.94, "reasoning": "Adult pushing for private meeting and secrecy from parents."}
 ```
 
 ## Training Details
 
-- **Hardware**: NVIDIA H100 80GB
-- **Training time**: ~4 hours
+- **Hardware**: NVIDIA H100 80GB HBM3
+- **Training steps**: 25,000
 - **Optimizer**: AdamW (fused)
 - **Learning rate**: 1.5e-4 with cosine restarts
-- **Batch size**: 32 (effective)
+- **Batch size**: 4 × 8 gradient accumulation = 32 effective
 - **LoRA rank**: 256, alpha: 512
+- **Dataset**: 1.6M conversations — Qwen2.5-7B-Instruct + xgrammar constrained decoding, persona-seeded, 8–15 messages each
 
 ## Intended Use
 
@@ -139,10 +147,10 @@ This model is designed for child safety monitoring in chat platforms. It is inte
 ## Citation
 
 ```bibtex
-@misc{horizon2025,
+@misc{horizon2026,
   title={Horizon: Child Safety Risk Detection via Fine-tuned LLMs},
   author={SafeCircle},
-  year={2025},
+  year={2026},
   url={https://huggingface.co/safecircleai/horizon-full}
 }
 ```
@@ -181,9 +189,9 @@ GGUF quantized variants of [safecircleai/horizon-full](https://huggingface.co/sa
 ```bash
 ./llama-cli \\
   -m horizon-full-Q4_K_M.gguf \\
-  --system-prompt "You are SafeCircle's risk detection model. Analyze conversations for child safety risks. Output JSON with: risk_level (none/low/medium/high/critical), categories (array), confidence (0-1), matched_terms (array), reasoning (brief)." \\
+  --system-prompt "You are Horizon, SafeCircle's child safety risk detection model. Analyze conversations and respond ONLY with a JSON object. JSON schema: {risk_detected: bool, category: grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign, severity: none|low|medium|high|critical, confidence: 0.0-1.0, reasoning: one sentence max}." \\
   -p "Analyze this conversation:\\nChild: Hey want to meet up? Keep it secret from your parents.\\nOther: Sure, I know a quiet place." \\
-  --temp 0 -n 256
+  --temp 0 -n 128
 ```
 
 ## Usage with Ollama
@@ -196,7 +204,7 @@ ollama run safecircleai/horizon-full-gguf
 ## Performance
 
 See [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full) for full evaluation metrics.
-Q4_K_M shows <1% degradation vs F16 on the risk detection benchmark.
+Trained on 1.6M synthetic conversations. Q4_K_M shows <1% degradation vs F16 on the risk detection benchmark.
 """
 
 MOBILE_MODEL_CARD = """\
@@ -230,15 +238,17 @@ Horizon Mobile is a lightweight binary risk classifier designed for on-device in
 | Output | `safe` / `risk` label + confidence score |
 | Inference time | ~25ms on CPU |
 
-## Evaluation Results (5,000 examples)
+## Evaluation Results
+
+Distilled from Horizon Full v2 (trained on 1.6M conversations).
 
 | Metric | Score |
 |--------|-------|
 | F1 | 0.9562 |
 | Precision | 0.9997 |
 | Recall | 0.9163 |
-| False Positive Rate | 0.10% (1/1034) |
-| False Negative Rate | 8.37% (332/3966) |
+| False Positive Rate | 0.10% |
+| False Negative Rate | 8.37% |
 
 ## Architecture
 
