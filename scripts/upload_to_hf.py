@@ -359,11 +359,23 @@ def upload_mobile_model(api: HfApi, mobile_dir: str):
         repo_id=MOBILE_REPO,
         commit_message="Add model card",
     )
-    api.upload_folder(
-        folder_path=mobile_dir,
-        repo_id=MOBILE_REPO,
-        commit_message="Upload Horizon Mobile ONNX model",
-    )
+
+    mobile_path = Path(mobile_dir)
+    files = [f for f in mobile_path.iterdir() if f.is_file()]
+    if not files:
+        print(f"  Warning: no files found in {mobile_dir}")
+        return
+
+    for f in sorted(files):
+        size_mb = f.stat().st_size / 1e6
+        print(f"  Uploading {f.name} ({size_mb:.1f} MB)...")
+        api.upload_file(
+            path_or_fileobj=str(f),
+            path_in_repo=f.name,
+            repo_id=MOBILE_REPO,
+            commit_message=f"Upload {f.name}",
+        )
+
     print(f"  Done: https://huggingface.co/{MOBILE_REPO}")
 
 
