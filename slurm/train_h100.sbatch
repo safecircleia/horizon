@@ -11,7 +11,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=38
-#SBATCH --gres=H_100_NVL
+#SBATCH --gres=gpu:H_100_NVL
 #SBATCH --mem=120G
 #SBATCH --time=48:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
