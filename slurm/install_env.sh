@@ -7,11 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# ── CUDA / modules ────────────────────────────────────────────────────────────
-module purge
-module load cuda/12.4 2>/dev/null || module load cuda 2>/dev/null || true
-module load python/3.13 2>/dev/null || true
-
 echo "CUDA: $(nvcc --version 2>/dev/null | head -1 || echo 'not found via nvcc')"
 echo "Python: $(python3 --version)"
 
