@@ -13,7 +13,7 @@
 #SBATCH --cpus-per-task=38
 #SBATCH --gres=gpu:H_100_NVL
 #SBATCH --mem=120G
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
 #SBATCH --error=/slurm/home/%u/output/%j/terminal.err
 
