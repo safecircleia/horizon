@@ -57,17 +57,3 @@ data:
   train_split: 0.9
   max_seq_length: 4096
   cache_dir: "data/.tokenized_cache"
-
-stages:
-  stage1:
-    name: "category_recognition"
-    steps: 8000
-    description: "Category recognition across all 7 risk types"
-  stage2:
-    name: "severity_calibration"
-    steps: 10000
-    description: "Severity calibration (none/low/medium/high/critical)"
-  stage3:
-    name: "false_positive_reduction"
-    steps: 7000
-    description: "False positive reduction on benign conversations"

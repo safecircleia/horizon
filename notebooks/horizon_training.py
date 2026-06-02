@@ -24,10 +24,11 @@ def _():
     import subprocess
     from pathlib import Path
 
-    ROOT = Path("/home/ubuntu/horizon").resolve()
+    # Resolve root from this notebook's location (notebooks/ sits one level below project root)
+    ROOT = Path(__file__).resolve().parent.parent
 
     if not (ROOT / "training").exists():
-        raise RuntimeError(f"Project root not found at {ROOT} — update ROOT in this cell.")
+        raise RuntimeError(f"Project root not found at {ROOT}. Run this notebook from the horizon/ directory.")
 
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))

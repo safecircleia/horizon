@@ -44,10 +44,8 @@ uvicorn>=0.29.0
 # Quantization
 llama-cpp-python>=0.2.0
 
-# ONNX Export
-onnx>=1.16.0
-onnxruntime>=1.18.0
-onnxscript>=0.1.0
+# LiteRT-LM export (optional — install separately when exporting mobile model)
+# uv pip install ai-edge-torch litert-lm-builder litert-lm-api
 
 # Notebook
 marimo>=0.9.0

@@ -38,6 +38,7 @@ from data.generation.generators import (
     GPTGenerator,
     VLLMGenerator,
 )
+from data.generation.prompts.base import pick_language
 from data.generation.prompts.benign import create_benign_prompt
 from data.generation.prompts.bullying import create_bullying_prompt
 from data.generation.prompts.grooming import create_grooming_prompt
@@ -152,6 +153,7 @@ async def generate_conversation(
     severity: RiskLevel,
     config: Dict[str, Any],
     retry_attempts: int = 3,
+    language_mode: str = "mixed",
 ) -> Optional[SyntheticConversation]:
     """Generate a single conversation with quality validation.
 
@@ -171,17 +173,18 @@ async def generate_conversation(
         # Random parameters
         child_age = random.randint(13, 17)
         num_messages = random.randint(8, 15)
+        lang = pick_language(language_mode)
 
         # Create prompt
         _PROMPT_BUILDERS = {
-            RiskCategory.BENIGN: lambda: create_benign_prompt(child_age, num_messages),
-            RiskCategory.BULLYING: lambda: create_bullying_prompt(severity, child_age, num_messages),
-            RiskCategory.GROOMING: lambda: create_grooming_prompt(severity, child_age, num_messages),
-            RiskCategory.ISOLATION: lambda: create_isolation_prompt(severity, child_age, num_messages),
-            RiskCategory.PERSONAL_INFO: lambda: create_personal_info_prompt(severity, child_age, num_messages),
-            RiskCategory.PLATFORM_MIGRATION: lambda: create_platform_migration_prompt(severity, child_age, num_messages),
-            RiskCategory.SEXUAL_CONTENT: lambda: create_sexual_content_prompt(severity, child_age, num_messages),
-            RiskCategory.THREATS: lambda: create_threats_prompt(severity, child_age, num_messages),
+            RiskCategory.BENIGN: lambda: create_benign_prompt(child_age, num_messages, lang),
+            RiskCategory.BULLYING: lambda: create_bullying_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.GROOMING: lambda: create_grooming_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.ISOLATION: lambda: create_isolation_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.PERSONAL_INFO: lambda: create_personal_info_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.PLATFORM_MIGRATION: lambda: create_platform_migration_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.SEXUAL_CONTENT: lambda: create_sexual_content_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.THREATS: lambda: create_threats_prompt(severity, child_age, num_messages, lang),
         }
         prompt = _PROMPT_BUILDERS[category]()
 
@@ -241,6 +244,7 @@ async def generate_conversation(
                     ).isoformat(),
                     "model": generator.model,
                     "attempt": attempt + 1,
+                    "language": lang,
                 },
             )
 
@@ -260,6 +264,7 @@ async def generate_batch(
     concurrency: int = 10,
     on_progress: Optional[Callable[[int, int], None]] = None,
     tqdm_position: int = 0,
+    language_mode: str = "mixed",
 ) -> List[SyntheticConversation]:
     """Generate a batch of conversations with a live worker pool.
 
@@ -284,7 +289,8 @@ async def generate_batch(
             except asyncio.QueueEmpty:
                 return
             async with semaphore:
-                result = await generate_conversation(generator, category, severity, config)
+                result = await generate_conversation(generator, category, severity, config,
+                                                     language_mode=language_mode)
             queue.task_done()
             if result is not None:
                 conversations.append(result)
@@ -448,6 +454,14 @@ Examples:
         help="Skip already-generated conversations and append only what is missing",
     )
 
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="mixed",
+        choices=["en", "es", "mixed"],
+        help="Language for generated conversations: en, es, or mixed (40%% Spanish, default: mixed)",
+    )
+
     args = parser.parse_args()
 
     # Load environment variables
@@ -523,6 +537,7 @@ Examples:
         remaining,
         config,
         concurrency=concurrency,
+        language_mode=args.language,
     )
 
     elapsed = (datetime.datetime.now() - start_time).total_seconds()

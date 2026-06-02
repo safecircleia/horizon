@@ -51,17 +51,3 @@ data:
   eval_file: "data/processed/eval.jsonl"
   train_split: 0.9
   max_seq_length: 2048
-
-stages:
-  stage1:
-    name: "category_recognition"
-    steps: 5000
-    description: "Category recognition across all 7 risk types"
-  stage2:
-    name: "severity_calibration"
-    steps: 5000
-    description: "Severity calibration (none/low/medium/high/critical)"
-  stage3:
-    name: "false_positive_reduction"
-    steps: 5000
-    description: "False positive reduction on benign conversations"

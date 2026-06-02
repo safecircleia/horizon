@@ -1,15 +1,15 @@
 # Data Generation Configuration
 
-# Target dataset size
+# Target dataset size — 500K total (60% en / 40% es via mixed mode)
 dataset_targets:
-  grooming: 1000
-  bullying: 1000
-  sexual_content: 1000
-  isolation: 1000
-  personal_info: 1000
-  platform_migration: 1000
-  threats: 1000
-  benign: 2000
+  grooming: 80000
+  bullying: 70000
+  sexual_content: 70000
+  isolation: 50000
+  personal_info: 50000
+  platform_migration: 30000
+  threats: 50000
+  benign: 100000
 
 # Severity distribution (for risk categories)
 severity_distribution:
@@ -24,8 +24,6 @@ generation:
   model_openai: "gpt-4o-2024-08-06"
   model_bedrock: "eu.amazon.nova-micro-v1:0"
   bedrock_region: "eu-west-3"
-  # Local vLLM — Qwen2.5-7B gives ~4x the throughput of 72B at acceptable quality
-  # for structured JSON conversation generation. Upgrade to 14B if diversity suffers.
   model_vllm: "Qwen/Qwen2.5-7B-Instruct"
   vllm_base_url: "http://localhost:8000/v1"
   temperature: 0.9
@@ -36,5 +34,5 @@ generation:
 
 # Quality thresholds
 quality:
-  min_conversation_length: 8  # minimum messages (raised; xgrammar guarantees structure)
-  max_conversation_length: 40  # maximum messages
+  min_conversation_length: 8
+  max_conversation_length: 40

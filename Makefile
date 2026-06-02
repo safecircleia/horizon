@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval
 
 # Default target
 help:
@@ -38,6 +38,12 @@ help:
 	@echo "  make serve MODEL=<path>  Start inference API server"
 	@echo "  make inference-cli CONVERSATION=<path>  Run CLI inference"
 	@echo ""
+	@echo "SLURM (run from /slurm/home/\$$USER/safecircle/horizon):"
+	@echo "  make slurm-train-h100             Submit H100 training job"
+	@echo "  make slurm-train-l4               Submit L4 training job"
+	@echo "  make slurm-train-mobile           Submit Gemma 3 1B mobile fine-tune (L4)"
+	@echo "  make slurm-eval CHECKPOINT=<path> Submit evaluation job"
+	@echo ""
 	@echo "Development:"
 	@echo "  make test             Run test suite"
 	@echo "  make format           Format code with black"
@@ -64,18 +70,18 @@ generate-data:
 	@if [ -z "$(CATEGORY)" ]; then echo "Error: CATEGORY required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
 	@if [ -z "$(COUNT)" ]; then echo "Error: COUNT required. Use: make generate-data CATEGORY=grooming COUNT=1000"; exit 1; fi
 	@PYTHON=python3; if [ -f .venv/bin/python ]; then PYTHON=.venv/bin/python; fi; \
-	$$PYTHON -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT) --generator $(or $(GENERATOR),bedrock) $(RESUME)
+	$$PYTHON -m data.generation.scripts.generate --category $(CATEGORY) --count $(COUNT) --generator $(or $(GENERATOR),bedrock) --language $(or $(LANGUAGE),mixed) $(RESUME)
 
 generate-all:
-	@echo "Generating complete 50K dataset (resumable)..."
-	make generate-data CATEGORY=grooming COUNT=8000 RESUME=--resume
-	make generate-data CATEGORY=bullying COUNT=7000 RESUME=--resume
-	make generate-data CATEGORY=sexual_content COUNT=7000 RESUME=--resume
-	make generate-data CATEGORY=isolation COUNT=5000 RESUME=--resume
-	make generate-data CATEGORY=personal_info COUNT=5000 RESUME=--resume
-	make generate-data CATEGORY=platform_migration COUNT=3000 RESUME=--resume
-	make generate-data CATEGORY=threats COUNT=5000 RESUME=--resume
-	make generate-data CATEGORY=benign COUNT=10000 RESUME=--resume
+	@echo "Generating complete 500K dataset with mixed EN/ES (resumable)..."
+	make generate-data CATEGORY=grooming COUNT=80000 RESUME=--resume
+	make generate-data CATEGORY=bullying COUNT=70000 RESUME=--resume
+	make generate-data CATEGORY=sexual_content COUNT=70000 RESUME=--resume
+	make generate-data CATEGORY=isolation COUNT=50000 RESUME=--resume
+	make generate-data CATEGORY=personal_info COUNT=50000 RESUME=--resume
+	make generate-data CATEGORY=platform_migration COUNT=30000 RESUME=--resume
+	make generate-data CATEGORY=threats COUNT=50000 RESUME=--resume
+	make generate-data CATEGORY=benign COUNT=100000 RESUME=--resume
 
 validate-data:
 	@if [ -f .venv/bin/python ]; then .venv/bin/python -m data.generation.validators.main validate data/raw/; else python3 -m data.generation.validators.main validate data/raw/; fi
@@ -131,24 +137,22 @@ train-l4:
 train-h100:
 	python -m training.scripts.train --config training/configs/h100.yaml
 
-## Distill horizon-full into horizon-mobile
-## Usage: make distill TEACHER=experiments/l4-xxx/final
-distill:
-	python -m training.scripts.distill \
-		--teacher $(TEACHER) \
-		--config training/configs/mobile.yaml
+## Fine-tune Gemma 3 1B for mobile (LiteRT-LM)
+train-mobile:
+	python -m training.scripts.train --config training/configs/mobile.yaml
 
-## Export mobile model to ONNX
-## Usage: make export-mobile CHECKPOINT=experiments/mobile-xxx/final
-export-mobile:
-	python -m training.scripts.export_onnx \
+## Export mobile checkpoint to .litertlm (requires ai-edge-torch + litert-lm-builder)
+## Usage: make export-litert CHECKPOINT=experiments/mobile-xxx/final
+export-litert:
+	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make export-litert CHECKPOINT=experiments/mobile-xxx/final"; exit 1; fi
+	python -m training.scripts.export_litert \
 		--checkpoint $(CHECKPOINT) \
 		--output models/mobile
 
 # Evaluation
 evaluate:
 	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make evaluate CHECKPOINT=experiments/run-1/checkpoints/step-5000"; exit 1; fi
-	python -m evaluation.metrics.evaluate --checkpoint $(CHECKPOINT) --test-set data/evaluation/test.jsonl
+	python -m evaluation.metrics.evaluate --checkpoint $(CHECKPOINT) --test-set data/processed/eval.jsonl
 
 analyze-errors:
 	python -m evaluation.analysis.error_analysis --predictions evaluation/reports/latest/predictions.jsonl
@@ -188,6 +192,23 @@ lint:
 
 notebook:
 	jupyter lab notebooks/
+
+# SLURM
+slurm-train-h100:
+	sbatch slurm/train_h100.sbatch
+
+slurm-train-l4:
+	sbatch slurm/train_l4.sbatch
+
+slurm-generate:
+	sbatch slurm/generate.sbatch
+
+slurm-train-mobile:
+	sbatch slurm/train_mobile.sbatch
+
+slurm-eval:
+	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make slurm-eval CHECKPOINT=experiments/run-xxx/checkpoints/step-5000"; exit 1; fi
+	sbatch slurm/evaluate.sbatch --export=CHECKPOINT=$(CHECKPOINT)
 
 # Docker (future)
 docker-build:
