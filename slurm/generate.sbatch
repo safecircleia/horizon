@@ -4,8 +4,8 @@
 #
 # Usage:
 #   sbatch slurm/generate.sbatch
-#   sbatch slurm/generate.sbatch --export=LANGUAGE=es
-#   sbatch slurm/generate.sbatch --export=LANGUAGE=mixed,CONCURRENCY=150
+#   sbatch slurm/generate.sbatch --export=GEN_LANGUAGE=es
+#   sbatch slurm/generate.sbatch --export=GEN_LANGUAGE=mixed,CONCURRENCY=150
 #
 # Run from: /slurm/home/$USER/safecircle/horizon
 
@@ -23,7 +23,7 @@
 set -euo pipefail
 
 CONCURRENCY="${CONCURRENCY:-150}"
-LANGUAGE="${LANGUAGE:-mixed}"   # en | es | mixed
+GEN_LANGUAGE="${GEN_LANGUAGE:-mixed}"   # en | es | mixed
 
 OUTDIR="/slurm/home/$USER/output/$SLURM_JOB_ID"
 mkdir -p "$OUTDIR"
@@ -94,7 +94,7 @@ declare -A CAT_COUNT=(
     [threats]=50000 [benign]=100000
 )
 
-echo "=== Generating: LANGUAGE=${LANGUAGE}, CONCURRENCY=${CONCURRENCY} ==="
+echo "=== Generating: GEN_LANGUAGE=${GEN_LANGUAGE}, CONCURRENCY=${CONCURRENCY} ==="
 
 pids=()
 for cat in "${CATEGORIES[@]}"; do
@@ -104,7 +104,7 @@ for cat in "${CATEGORIES[@]}"; do
         --category "$cat" \
         --count "$target" \
         --generator vllm \
-        --language "$LANGUAGE" \
+        --language "$GEN_LANGUAGE" \
         --concurrency "$CONCURRENCY" \
         --config data/generation/config.yaml \
         --resume \
