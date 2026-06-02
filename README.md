@@ -117,6 +117,48 @@ python -m data.generation.scripts.generate \
     --category bullying --count 1000 --generator bedrock
 ```
 
+### SLURM (ANTS cluster) — 500K dataset
+
+Copy the project to the cluster first:
+
+```bash
+rsync -av --exclude='.venv' --exclude='data/raw' . \
+    $USER@cluster:/slurm/home/$USER/safecircle/horizon/
+```
+
+Then submit from `/slurm/home/$USER/safecircle/horizon`:
+
+```bash
+# Full 500K mixed EN/ES dataset (starts vLLM on H100, ~35-40h)
+sbatch slurm/generate.sbatch
+
+# Spanish only
+sbatch slurm/generate.sbatch --export=LANGUAGE=es
+
+# English only
+sbatch slurm/generate.sbatch --export=LANGUAGE=en
+
+# Monitor
+squeue -u $USER
+tail -f /slurm/home/$USER/output/<JOBID>/terminal.out
+tail -f /slurm/home/$USER/output/<JOBID>/grooming.log   # per-category log
+```
+
+Raw data is written to `data/raw/` on scratch and synced back to
+`$SUBMIT_DIR/data/raw/` automatically when the job ends. If the job
+hits the time limit, resubmit with the same command — `--resume` is
+always on and generation continues from where it stopped.
+
+After generation, sync back and preprocess:
+
+```bash
+# On your local machine — pull generated data
+rsync -av $USER@cluster:/slurm/home/$USER/safecircle/horizon/data/raw/ data/raw/
+
+# Preprocess into training format
+python -m training.scripts.preprocess --input data/raw --output data/processed
+```
+
 ### Dataset on HuggingFace
 
 The processed dataset is hosted privately at [`safecircleai/horizon-training-data`](https://huggingface.co/datasets/safecircleai/horizon-training-data).
