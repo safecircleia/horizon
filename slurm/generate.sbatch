@@ -100,11 +100,12 @@ pids=()
 for cat in "${CATEGORIES[@]}"; do
     target="${CAT_COUNT[$cat]}"
     echo "  → $cat (target=${target})"
-    CONCURRENCY="$CONCURRENCY" python -m data.generation.scripts.generate \
+    python -m data.generation.scripts.generate \
         --category "$cat" \
         --count "$target" \
         --generator vllm \
         --language "$LANGUAGE" \
+        --concurrency "$CONCURRENCY" \
         --config data/generation/config.yaml \
         --resume \
         2>&1 | tee "$OUTDIR/${cat}.log" &

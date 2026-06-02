@@ -61,7 +61,9 @@ fi
 
 export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-mkdir -p "$HF_HOME"
+export ARTIFACTS_DIR="$JOBSCRATCH/experiments"
+export PERSISTENT_ARTIFACTS_DIR="/slurm/home/$USER/artifacts"
+mkdir -p "$HF_HOME" "$ARTIFACTS_DIR" "$PERSISTENT_ARTIFACTS_DIR"
 
 # ── Launch training ───────────────────────────────────────────────────────────
 cd "$JOBSCRATCH"

@@ -462,6 +462,13 @@ Examples:
         help="Language for generated conversations: en, es, or mixed (40%% Spanish, default: mixed)",
     )
 
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=None,
+        help="Number of concurrent workers (overrides config.yaml value)",
+    )
+
     args = parser.parse_args()
 
     # Load environment variables
@@ -530,7 +537,7 @@ Examples:
     # Generate conversations
     start_time = datetime.datetime.now()
 
-    concurrency = config.get("generation", {}).get("concurrency", 10)
+    concurrency = args.concurrency or config.get("generation", {}).get("concurrency", 10)
     conversations = await generate_batch(
         generator,
         category,
