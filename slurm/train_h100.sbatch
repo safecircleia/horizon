@@ -29,11 +29,14 @@ mkdir -p "$JOBSCRATCH"
 
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 
-# ── Cleanup trap — copy results back on exit/timeout ─────────────────────────
+# ── Cleanup trap — copy results back on exit/timeout/SIGTERM ─────────────────
 cleanup() {
-    echo "=== Syncing experiments back to home ==="
+    kill "$SYNC_PID" 2>/dev/null || true
+    echo "=== Final sync to home and persistent storage ==="
     rsync -a --ignore-missing-args \
         "$JOBSCRATCH/experiments/" "$SUBMIT_DIR/experiments/" 2>/dev/null || true
+    rsync -a --ignore-missing-args \
+        "$JOBSCRATCH/experiments/" "$PERSISTENT_ARTIFACTS_DIR/experiments/" 2>/dev/null || true
     rsync -a --ignore-missing-args \
         "$JOBSCRATCH/data/.tokenized_cache/" "$SUBMIT_DIR/data/.tokenized_cache/" 2>/dev/null || true
     echo "=== Sync complete ==="
@@ -81,6 +84,14 @@ RESUME_FLAG=""
 if [ -n "${RESUME_CHECKPOINT:-}" ]; then
     RESUME_FLAG="--resume $RESUME_CHECKPOINT"
 fi
+
+# ── Background checkpoint sync every 10 min (survives SIGTERM, not SIGKILL) ──
+while true; do
+    sleep 600
+    rsync -a --ignore-missing-args \
+        "$JOBSCRATCH/experiments/" "$PERSISTENT_ARTIFACTS_DIR/experiments/" 2>/dev/null || true
+done &
+SYNC_PID=$!
 
 echo "=== Starting H100 training (Job $SLURM_JOB_ID) ==="
 python -m training.scripts.train \
