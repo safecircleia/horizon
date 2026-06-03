@@ -17,17 +17,17 @@ uv sync
 # Copy and fill in secrets
 cp .env.example .env
 
-# Generate dataset (see Data Generation section)
-bash data/generation/scripts/generate_bulk.sh
+# Generate dataset on SLURM (see Data Generation section)
+sbatch slurm/generate.sbatch
 
 # Preprocess raw data into training format
 python -m training.scripts.preprocess --input data/raw --output data/processed
 
-# Train (local GPU)
-python -m training.scripts.train --config training/configs/h100.yaml
+# Train on SLURM
+sbatch slurm/train_h100.sbatch
 
-# Evaluate a checkpoint
-make evaluate CHECKPOINT=experiments/h100-<timestamp>/checkpoints/step-5000
+# Evaluate a checkpoint  (--export must come BEFORE the script path)
+sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 slurm/evaluate.sbatch
 ```
 
 ---
@@ -37,7 +37,7 @@ make evaluate CHECKPOINT=experiments/h100-<timestamp>/checkpoints/step-5000
 ```
 horizon/
 ├── data/
-│   ├── raw/                   # Per-category JSONL (generated)
+│   ├── raw/                   # Per-category JSONL (500K generated)
 │   ├── processed/             # train.jsonl + eval.jsonl (TRL messages format)
 │   ├── generation/            # Generation pipeline (generators, prompts, scripts)
 │   └── scripts/               # upload_to_hub.py, download_from_hub.py
@@ -46,8 +46,7 @@ horizon/
 │   ├── model/                 # loader.py (QLoRA), mobile.py (constants)
 │   └── scripts/               # preprocess.py, train.py, export_litert.py
 ├── evaluation/                # evaluate.py, plot_results.py
-├── slurm/                     # SLURM sbatch scripts for ANTS cluster
-├── lib/                       # install_env.sh (idempotent cluster env setup)
+├── slurm/                     # SLURM sbatch scripts + install_env.sh
 ├── scripts/                   # merge_lora.py, upload_to_hf.py, export_gguf.sh
 ├── quantization/              # GGUF export
 ├── inference/                 # API server, CLI
@@ -77,105 +76,42 @@ HF_TOKEN=...               # HuggingFace token with safecircleai org access
 
 ## Data Generation
 
-### Local vLLM (recommended for large runs)
+The dataset is **500K conversations** across 8 categories, bilingual (60% English / 40% Spanish).
+
+| Category | Count |
+|---|---|
+| grooming | 80 000 |
+| bullying | 70 000 |
+| sexual_content | 70 000 |
+| isolation | 50 000 |
+| personal_info | 50 000 |
+| platform_migration | 30 000 |
+| threats | 50 000 |
+| benign | 100 000 |
+
+### SLURM (ANTS cluster) — recommended
+
+> **Note:** `--export` must always come **before** the script path in sbatch.
 
 ```bash
-# 1. Start vLLM server on the H100
-vllm serve Qwen/Qwen2.5-72B-Instruct-AWQ \
-    --tensor-parallel-size 1 \
-    --max-model-len 4096 \
-    --gpu-memory-utilization 0.92 \
-    --port 8000
-
-# 2. Generate all 8 categories (~50K examples total)
-COUNT=200000 CONCURRENCY=150 bash data/generation/scripts/generate_bulk.sh
-
-# Resume a partial run
-bash data/generation/scripts/generate_bulk.sh --resume
-```
-
-| Model | VRAM | ~tok/s | Quality | 50K ETA |
-|---|---|---|---|---|
-| `Qwen2.5-72B-Instruct-AWQ` | 40 GB | 4–5k | High | ~56h |
-| `Qwen2.5-7B-Instruct` | 16 GB | 18k | Good | ~14h |
-
-### Single-category generation
-
-```bash
-python -m data.generation.scripts.generate \
-    --category grooming \
-    --count 8000 \
-    --generator bedrock \
-    --resume
-```
-
-### Cloud generators
-
-```bash
-# Bedrock (default), Claude, or OpenAI
-python -m data.generation.scripts.generate \
-    --category bullying --count 1000 --generator bedrock
-```
-
-### SLURM (ANTS cluster) — 500K dataset
-
-Copy the project to the cluster first:
-
-```bash
-rsync -av --exclude='.venv' --exclude='data/raw' . \
-    $USER@cluster:/slurm/home/$USER/safecircle/horizon/
-```
-
-Then submit from `/slurm/home/$USER/safecircle/horizon`:
-
-```bash
-# Full 500K mixed EN/ES dataset (starts vLLM on H100, ~35-40h)
+# Full 500K mixed EN/ES dataset (~6h on H100 with Qwen2.5-7B)
 sbatch slurm/generate.sbatch
 
 # Spanish only
-sbatch slurm/generate.sbatch --export=LANGUAGE=es
+sbatch --export=GEN_LANGUAGE=es slurm/generate.sbatch
 
 # English only
-sbatch slurm/generate.sbatch --export=LANGUAGE=en
+sbatch --export=GEN_LANGUAGE=en slurm/generate.sbatch
 
 # Monitor
 squeue -u $USER
 tail -f /slurm/home/$USER/output/<JOBID>/terminal.out
-tail -f /slurm/home/$USER/output/<JOBID>/grooming.log   # per-category log
+grep "Total Conversations" /slurm/home/$USER/output/<JOBID>/*.log
 ```
 
-Raw data is written to `data/raw/` on scratch and synced back to
-`$SUBMIT_DIR/data/raw/` automatically when the job ends. If the job
-hits the time limit, resubmit with the same command — `--resume` is
-always on and generation continues from where it stopped.
+Generation is fully resumable — if the job hits the time limit, resubmit with the same command and it continues from where it stopped.
 
-After generation, sync back and preprocess:
-
-```bash
-# On your local machine — pull generated data
-rsync -av $USER@cluster:/slurm/home/$USER/safecircle/horizon/data/raw/ data/raw/
-
-# Preprocess into training format
-python -m training.scripts.preprocess --input data/raw --output data/processed
-```
-
-### Dataset on HuggingFace
-
-The processed dataset is hosted privately at [`safecircleai/horizon-training-data`](https://huggingface.co/datasets/safecircleai/horizon-training-data).
-
-```bash
-# Download to data/processed/
-make download-data
-
-# Upload after generating locally
-make upload-data
-```
-
----
-
-## Preprocessing
-
-Converts raw JSONL → TRL `messages` format and injects adversarial hardening examples:
+After generation, preprocess:
 
 ```bash
 python -m training.scripts.preprocess \
@@ -184,11 +120,36 @@ python -m training.scripts.preprocess \
     --adversarial-ratio 0.10
 ```
 
+Output: 495 000 train + 50 000 eval examples (+ 45 000 adversarial hardening in train).
+
+### Single-category (local or cloud)
+
+```bash
+# vLLM (local H100)
+python -m data.generation.scripts.generate \
+    --category grooming --count 8000 --generator vllm --language mixed --resume
+
+# Bedrock / Claude / OpenAI
+python -m data.generation.scripts.generate \
+    --category bullying --count 1000 --generator bedrock
+```
+
+### Dataset on HuggingFace
+
+```bash
+# Upload raw + processed to safecircleai/horizon-training-data
+python data/scripts/upload_to_hub.py
+
+# Upload only processed splits (faster)
+python data/scripts/upload_to_hub.py --split processed
+
+# Download
+make download-data
+```
+
 ---
 
 ## Training
-
-Three configs are available — pick based on your GPU:
 
 | Config | GPU | VRAM | Steps | Notes |
 |---|---|---|---|---|
@@ -197,63 +158,63 @@ Three configs are available — pick based on your GPU:
 | `quick.yaml` | Any | 8 GB+ | 500 | 4-bit QLoRA, smoke test |
 | `mobile.yaml` | L4 | 24 GB | 8 000 | Gemma 3 1B, 4-bit, for LiteRT-LM |
 
+### SLURM (ANTS cluster)
+
+> **Note:** `--export` must always come **before** the script path in sbatch.
+
+```bash
+# H100 NVL (partition: gpuMax)
+sbatch slurm/train_h100.sbatch
+
+# L4 (partition: gpu)
+sbatch slurm/train_l4.sbatch
+
+# Gemma 3 1B mobile (partition: gpu)
+sbatch slurm/train_mobile.sbatch
+
+# Resume from a checkpoint
+sbatch --export=RESUME_CHECKPOINT=experiments/h100-<timestamp>/checkpoint-5000 \
+    slurm/train_h100.sbatch
+
+# Monitor
+squeue -u $USER
+tail -f /slurm/home/$USER/output/<JOBID>/training.log
+```
+
+Checkpoints are saved as `experiments/<run>/checkpoint-<step>/` and synced to persistent storage every 10 minutes and on job exit.
+
 ### Local
 
 ```bash
-# Full run
 python -m training.scripts.train --config training/configs/h100.yaml
 
 # Quick smoke test
 make train-quick
 
-# Resume from checkpoint
+# Resume
 python -m training.scripts.train \
     --config training/configs/h100.yaml \
-    --resume experiments/h100-<timestamp>/checkpoints/step-5000
+    --resume experiments/h100-<timestamp>/checkpoint-5000
 ```
-
-### SLURM (ANTS cluster)
-
-Copy the project to your cluster home first:
-
-```bash
-rsync -av --exclude='.venv' --exclude='data/raw' . \
-    $USER@cluster:/slurm/home/$USER/safecircle/horizon/
-```
-
-Then submit from `/slurm/home/$USER/safecircle/horizon`:
-
-```bash
-# H100 NVL — 48h limit
-sbatch slurm/train_h100.sbatch
-
-# L4 — 24h limit
-sbatch slurm/train_l4.sbatch
-
-# Gemma 3 1B mobile — 12h limit
-sbatch slurm/train_mobile.sbatch
-
-# Resume from a checkpoint
-sbatch slurm/train_h100.sbatch \
-    --export=RESUME_CHECKPOINT=experiments/h100-<timestamp>/checkpoints/step-5000
-
-# Monitor
-squeue -u $USER
-tail -f /slurm/home/$USER/output/<JOBID>/terminal.out
-```
-
-Checkpoints are synced back to `experiments/` automatically when the job ends (including on timeout).
 
 ---
 
 ## Evaluation
 
-```bash
-make evaluate CHECKPOINT=experiments/h100-<timestamp>/checkpoints/step-5000
+Checkpoints use the format `checkpoint-<step>` (e.g. `checkpoint-25000`). The final merged checkpoint is at `final/`.
 
-# Or directly
+```bash
+# SLURM  (--export must come before the script path)
+sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 \
+    slurm/evaluate.sbatch
+
+# Or evaluate the final checkpoint
+sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/final \
+    slurm/evaluate.sbatch
+
+# Local
 python -m evaluation.metrics.evaluate \
-    --checkpoint experiments/h100-<timestamp>/checkpoints/step-5000 \
+    --checkpoint experiments/h100-<timestamp>/checkpoint-25000 \
     --test-set data/processed/eval.jsonl \
     --output evaluation/reports
 ```
@@ -269,10 +230,8 @@ The mobile model is Gemma 3 1B fine-tuned with QLoRA, then exported to a `.liter
 ### 1. Train
 
 ```bash
-# On cluster
 sbatch slurm/train_mobile.sbatch
-
-# Local
+# or locally:
 python -m training.scripts.train --config training/configs/mobile.yaml
 ```
 
@@ -377,4 +336,4 @@ https://safecircle.tech
 
 ---
 
-**Status:** In Development · **Version:** 0.2.0 · **Updated:** 2026-06-02
+**Status:** In Development · **Version:** 0.3.0 · **Updated:** 2026-06-03
