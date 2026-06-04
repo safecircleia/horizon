@@ -6,8 +6,9 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-eval
-#SBATCH --partition=gpuMax
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
+#SBATCH --nodelist=slurm-gpu08
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
