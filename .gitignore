@@ -120,3 +120,4 @@ site/
 # Keep directory structure but ignore contents
 !.gitkeep
 data/.tokenized_cache/
+.remember/
