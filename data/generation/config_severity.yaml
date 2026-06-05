@@ -1,0 +1,38 @@
+# Severity top-up generation config.
+# Generates 35K critical/high-heavy examples across the 7 risk categories.
+# Output goes to data/raw_severity/ — kept separate from the main 500K dataset.
+# Used for the continuation fine-tune (h100_severity.yaml).
+
+# 7 risk categories only — no benign needed (benign is already perfect)
+dataset_targets:
+  grooming: 5000
+  bullying: 5000
+  sexual_content: 5000
+  isolation: 5000
+  personal_info: 5000
+  platform_migration: 5000
+  threats: 5000
+
+# Heavily oversample the two weak severity classes
+severity_distribution:
+  low: 0.05
+  medium: 0.15
+  high: 0.35
+  critical: 0.45
+
+generation:
+  model_vllm: "Qwen/Qwen2.5-7B-Instruct"
+  vllm_base_url: "http://localhost:8000/v1"
+  model_bedrock: "eu.amazon.nova-micro-v1:0"
+  bedrock_region: "eu-west-3"
+  model_claude: "claude-3-5-sonnet-20241022"
+  model_openai: "gpt-4o-2024-08-06"
+  temperature: 0.9
+  max_tokens: 2000
+  batch_size: 10
+  retry_attempts: 3
+  concurrency: 10
+
+quality:
+  min_conversation_length: 8
+  max_conversation_length: 40

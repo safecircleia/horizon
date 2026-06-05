@@ -1,0 +1,73 @@
+# Severity continuation fine-tune — improves critical/high severity recall.
+# Short run on top-up data, resumed from the main h100 checkpoint.
+# Low LR to avoid forgetting the category detection gains (~0.99 F1).
+#
+# Step 1: Generate top-up data
+#   sbatch slurm/generate_severity.sbatch
+#
+# Step 2: Preprocess
+#   python -m training.scripts.preprocess \
+#       --input data/raw_severity --output data/processed_severity
+#
+# Step 3: Submit continuation
+#   sbatch \
+#     --export=RESUME_CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 \
+#     slurm/train_h100.sbatch
+#   (override CONFIG env var if train_h100.sbatch doesn't pick this file automatically)
+
+model:
+  base_model: "meta-llama/Llama-3.2-3B-Instruct"
+  torch_dtype: "bfloat16"
+  max_seq_length: 4096
+  attn_implementation: "cudnn_attention"
+
+lora:
+  rank: 256
+  alpha: 512
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+quantization:
+  load_in_4bit: false
+
+training:
+  output_dir: "experiments/h100-severity-{timestamp}"
+  max_steps: 5000
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  learning_rate: 5e-5
+  lr_scheduler_type: "cosine"
+  warmup_steps: 100
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  logging_steps: 25
+  eval_steps: 500
+  save_steps: 500
+  save_total_limit: 3
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "tensorboard"
+  optim: "adamw_torch_fused"
+  dataloader_num_workers: 20
+  dataloader_pin_memory: true
+  dataloader_prefetch_factor: 4
+  torch_compile: false
+  torch_compile_backend: "inductor"
+  torch_compile_mode: "max-autotune"
+
+data:
+  train_file: "data/processed_severity/train.jsonl"
+  eval_file: "data/processed_severity/eval.jsonl"
+  max_seq_length: 4096
+  cache_dir: "data/.tokenized_cache_severity"
