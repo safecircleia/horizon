@@ -44,7 +44,7 @@ training:
   per_device_eval_batch_size: 16
   gradient_accumulation_steps: 8
   gradient_checkpointing: true
-  learning_rate: 5e-5
+  learning_rate: 0.00005
   lr_scheduler_type: "cosine"
   warmup_steps: 100
   weight_decay: 0.01
