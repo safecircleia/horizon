@@ -39,7 +39,7 @@ quantization:
 
 training:
   output_dir: "experiments/h100-severity-{timestamp}"
-  max_steps: 5000
+  max_steps: 30000
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 16
   gradient_accumulation_steps: 8
