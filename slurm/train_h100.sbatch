@@ -95,7 +95,7 @@ SYNC_PID=$!
 
 echo "=== Starting H100 training (Job $SLURM_JOB_ID) ==="
 python -m training.scripts.train \
-    --config training/configs/h100.yaml \
+    --config "${CONFIG:-training/configs/h100.yaml}" \
     $RESUME_FLAG \
     2>&1 | tee "$OUTDIR/training.log"
 
