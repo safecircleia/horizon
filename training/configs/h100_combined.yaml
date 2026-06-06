@@ -1,0 +1,66 @@
+# Combined dataset training config.
+# Trains on 500K main + 35K severity top-up (~535K total).
+# Same settings as h100.yaml but points at data/processed_combined/.
+#
+# Workflow:
+#   cp data/raw_severity/*.jsonl data/raw/
+#   python -m training.scripts.preprocess \
+#       --input data/raw --output data/processed_combined
+#   sbatch --export=CONFIG=training/configs/h100_combined.yaml slurm/train_h100.sbatch
+
+model:
+  base_model: "meta-llama/Llama-3.2-3B-Instruct"
+  torch_dtype: "bfloat16"
+  max_seq_length: 4096
+  attn_implementation: "cudnn_attention"
+
+lora:
+  rank: 256
+  alpha: 512
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+quantization:
+  load_in_4bit: false
+
+training:
+  output_dir: "experiments/h100-combined-{timestamp}"
+  max_steps: 25000
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 16
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  learning_rate: 0.00015
+  lr_scheduler_type: "cosine_with_restarts"
+  warmup_steps: 500
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  logging_steps: 25
+  eval_steps: 2000
+  save_steps: 2000
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "tensorboard"
+  optim: "adamw_torch_fused"
+  dataloader_num_workers: 20
+  dataloader_pin_memory: true
+  dataloader_prefetch_factor: 4
+  torch_compile: false
+  torch_compile_backend: "inductor"
+  torch_compile_mode: "max-autotune"
+
+data:
+  train_file: "data/processed_combined/train.jsonl"
+  eval_file: "data/processed_combined/eval.jsonl"
+  max_seq_length: 4096
+  cache_dir: "data/.tokenized_cache_combined"
