@@ -225,7 +225,12 @@ Results are written to `evaluation/reports/latest/results.json`.
 
 ## Mobile Model (LiteRT-LM)
 
-The mobile model is Gemma 3 1B fine-tuned with QLoRA, then exported to a `.litertlm` container for on-device inference via [LiteRT-LM](https://ai.google.dev/edge/litert-lm/overview) on Android and iOS.
+The mobile model is Gemma 3 1B fine-tuned with QLoRA, exported in two quantization variants targeting different device capabilities.
+
+| Variant | Quantization | Size | Target |
+|---|---|---|---|
+| `mobile-standard` | INT8 | ~1.2 GB | 6 GB+ RAM phones (mid-range 2022+) |
+| `mobile-lite` | INT4 | ~0.7 GB | 4 GB RAM phones (budget/older) |
 
 ### 1. Train
 
@@ -241,27 +246,44 @@ python -m training.scripts.train --config training/configs/mobile.yaml
 uv pip install ai-edge-torch litert-lm-builder
 ```
 
-### 3. Export to `.litertlm`
+### 3. Export both variants
 
 ```bash
+# Standard (INT8, 6GB+ phones) — merges LoRA first
 python -m training.scripts.export_litert \
     --checkpoint experiments/mobile-<timestamp>/final \
-    --output models/mobile
+    --output models/mobile-standard \
+    --quantization int8
+
+# Lite (INT4, 4GB phones) — reuses merged/ from standard export
+python -m training.scripts.export_litert \
+    --checkpoint experiments/mobile-<timestamp>/final \
+    --output models/mobile-lite \
+    --quantization int4 \
+    --skip-merge \
+    --merged-dir models/mobile-standard/merged
 ```
 
 Output:
 
 ```
-models/mobile/
-    merged/                   # merged HF checkpoint
-    model.tflite              # INT8 quantised TFLite
-    horizon-mobile.litertlm   # deployable container
+models/mobile-standard/
+    merged/                            # shared merged HF checkpoint
+    model.tflite                       # INT8 TFLite flatbuffer
+    horizon-mobile-int8.litertlm       # for 6GB+ phones
+
+models/mobile-lite/
+    model.tflite                       # INT4 TFLite flatbuffer
+    horizon-mobile-int4.litertlm       # for 4GB phones
 ```
 
 ### 4. Test locally
 
 ```bash
-uvx litert-lm run models/mobile/horizon-mobile.litertlm \
+uvx litert-lm run models/mobile-standard/horizon-mobile-int8.litertlm \
+    --prompt "Analyse this conversation for risks"
+
+uvx litert-lm run models/mobile-lite/horizon-mobile-int4.litertlm \
     --prompt "Analyse this conversation for risks"
 ```
 
