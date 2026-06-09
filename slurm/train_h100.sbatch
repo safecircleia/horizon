@@ -28,6 +28,7 @@ JOBSCRATCH="${SCRATCH}/horizon-${SLURM_JOB_ID}"
 mkdir -p "$JOBSCRATCH"
 
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+PERSISTENT_ARTIFACTS_DIR="/slurm/home/$USER/artifacts"
 
 # ── Cleanup trap — copy results back on exit/timeout/SIGTERM ─────────────────
 cleanup() {

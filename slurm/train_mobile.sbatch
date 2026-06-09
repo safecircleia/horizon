@@ -32,6 +32,7 @@ JOBSCRATCH="${SCRATCH}/horizon-mobile-${SLURM_JOB_ID}"
 mkdir -p "$JOBSCRATCH"
 
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
+PERSISTENT_ARTIFACTS_DIR="/slurm/home/$USER/artifacts"
 
 # ── Cleanup trap — copy results back on exit/timeout/SIGTERM ─────────────────
 cleanup() {
@@ -56,7 +57,12 @@ rsync -a "$SUBMIT_DIR/data/processed/" "$JOBSCRATCH/data/processed/"
 if [ -n "${RESUME_CHECKPOINT:-}" ]; then
     echo "=== Copying checkpoint for resume: $RESUME_CHECKPOINT ==="
     mkdir -p "$JOBSCRATCH/$(dirname "$RESUME_CHECKPOINT")"
-    rsync -a "$SUBMIT_DIR/$RESUME_CHECKPOINT/" "$JOBSCRATCH/$RESUME_CHECKPOINT/"
+    # Try project dir first, fall back to persistent artifacts
+    if [ -d "$SUBMIT_DIR/$RESUME_CHECKPOINT" ]; then
+        rsync -a "$SUBMIT_DIR/$RESUME_CHECKPOINT/" "$JOBSCRATCH/$RESUME_CHECKPOINT/"
+    else
+        rsync -a "$PERSISTENT_ARTIFACTS_DIR/$RESUME_CHECKPOINT/" "$JOBSCRATCH/$RESUME_CHECKPOINT/"
+    fi
 fi
 
 # ── Environment ───────────────────────────────────────────────────────────────
