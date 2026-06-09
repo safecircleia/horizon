@@ -17,7 +17,7 @@
 #SBATCH --cpus-per-task=18
 #SBATCH --gres=gpu:nvidia_l40s
 #SBATCH --mem=60G
-#SBATCH --time=12:00:00
+#SBATCH --time=20:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
 #SBATCH --error=/slurm/home/%u/output/%j/terminal.err
 
@@ -35,7 +35,7 @@ SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 
 # ── Cleanup trap — copy results back on exit/timeout/SIGTERM ─────────────────
 cleanup() {
-    kill "$SYNC_PID" 2>/dev/null || true
+    kill "${SYNC_PID:-}" 2>/dev/null || true
     echo "=== Final sync to home and persistent storage ==="
     rsync -a --ignore-missing-args \
         "$JOBSCRATCH/experiments/" "$SUBMIT_DIR/experiments/" 2>/dev/null || true

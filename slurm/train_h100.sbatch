@@ -31,7 +31,7 @@ SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 
 # ── Cleanup trap — copy results back on exit/timeout/SIGTERM ─────────────────
 cleanup() {
-    kill "$SYNC_PID" 2>/dev/null || true
+    kill "${SYNC_PID:-}" 2>/dev/null || true
     echo "=== Final sync to home and persistent storage ==="
     rsync -a --ignore-missing-args \
         "$JOBSCRATCH/experiments/" "$SUBMIT_DIR/experiments/" 2>/dev/null || true

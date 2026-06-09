@@ -27,7 +27,7 @@ python -m training.scripts.preprocess --input data/raw --output data/processed
 sbatch slurm/train_h100.sbatch
 
 # Evaluate a checkpoint  (--export must come BEFORE the script path)
-sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 slurm/evaluate.sbatch
+sbatch --export=ALL,CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 slurm/evaluate.sbatch
 ```
 
 ---
@@ -98,10 +98,10 @@ The dataset is **500K conversations** across 8 categories, bilingual (60% Englis
 sbatch slurm/generate.sbatch
 
 # Spanish only
-sbatch --export=GEN_LANGUAGE=es slurm/generate.sbatch
+sbatch --export=ALL,GEN_LANGUAGE=es slurm/generate.sbatch
 
 # English only
-sbatch --export=GEN_LANGUAGE=en slurm/generate.sbatch
+sbatch --export=ALL,GEN_LANGUAGE=en slurm/generate.sbatch
 
 # Monitor
 squeue -u $USER
@@ -160,7 +160,7 @@ make download-data
 
 ### SLURM (ANTS cluster)
 
-> **Note:** `--export` must always come **before** the script path in sbatch.
+> **Note:** Always use `--export=ALL,VAR=value` (with `ALL,` prefix) so SLURM inherits the full environment. `--export` must come **before** the script path.
 
 ```bash
 # H100 NVL (partition: gpuMax)
@@ -169,11 +169,11 @@ sbatch slurm/train_h100.sbatch
 # L4 (partition: gpu)
 sbatch slurm/train_l4.sbatch
 
-# Gemma 3 1B mobile (partition: gpu)
+# Gemma 3 1B mobile (partition: gpu, slurm-gpu08 L40s)
 sbatch slurm/train_mobile.sbatch
 
 # Resume from a checkpoint
-sbatch --export=RESUME_CHECKPOINT=experiments/h100-<timestamp>/checkpoint-5000 \
+sbatch --export=ALL,RESUME_CHECKPOINT=experiments/h100-<timestamp>/checkpoint-5000 \
     slurm/train_h100.sbatch
 
 # Monitor
@@ -205,11 +205,11 @@ Checkpoints use the format `checkpoint-<step>` (e.g. `checkpoint-25000`). The fi
 
 ```bash
 # SLURM  (--export must come before the script path)
-sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 \
+sbatch --export=ALL,CHECKPOINT=experiments/h100-<timestamp>/checkpoint-25000 \
     slurm/evaluate.sbatch
 
 # Or evaluate the final checkpoint
-sbatch --export=CHECKPOINT=experiments/h100-<timestamp>/final \
+sbatch --export=ALL,CHECKPOINT=experiments/h100-<timestamp>/final \
     slurm/evaluate.sbatch
 
 # Local
