@@ -143,8 +143,9 @@ def main():
         processing_class=tokenizer,
     )
 
+    resume = str(Path(args.resume).resolve()) if args.resume else None
     print("Starting training...")
-    trainer.train(resume_from_checkpoint=args.resume)
+    trainer.train(resume_from_checkpoint=resume)
 
     final_dir = f"{output_dir}/final"
     model.save_pretrained(final_dir)
