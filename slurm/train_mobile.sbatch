@@ -17,7 +17,7 @@
 #SBATCH --cpus-per-task=18
 #SBATCH --gres=gpu:nvidia_l40s
 #SBATCH --mem=60G
-#SBATCH --time=20:00:00
+#SBATCH --time=3-00:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
 #SBATCH --error=/slurm/home/%u/output/%j/terminal.err
 
