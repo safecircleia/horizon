@@ -72,15 +72,29 @@ def convert_to_tflite(
     max_seq_length: int,
     quantization: str,
 ) -> None:
-    try:
-        import litert_torch
-        from litert_torch.generative.utilities import model_builder
-        from litert_torch.quantize.quant_recipe import (
-            Dtype, GenerativeQuantRecipe, QuantRecipe,
-        )
-    except ImportError:
+    _torch_mod = None
+    for _pkg in ("litert_torch", "ai_edge_torch"):
+        try:
+            _torch_mod = __import__(_pkg)
+            _model_builder = __import__(
+                f"{_pkg}.generative.utilities.model_builder", fromlist=["model_builder"]
+            )
+            _quant = __import__(
+                f"{_pkg}.quantize.quant_recipe",
+                fromlist=["Dtype", "GenerativeQuantRecipe", "QuantRecipe"],
+            )
+            model_builder = _model_builder
+            Dtype = _quant.Dtype
+            GenerativeQuantRecipe = _quant.GenerativeQuantRecipe
+            QuantRecipe = _quant.QuantRecipe
+            break
+        except ImportError as _e:
+            print(f"  [{_pkg}] import failed: {_e}")
+            _torch_mod = None
+
+    if _torch_mod is None:
         print(
-            "ERROR: litert_torch is not installed.\n"
+            "ERROR: neither litert_torch nor ai_edge_torch could be imported.\n"
             "Install with: uv pip install litert-torch\n"
             "See: https://ai.google.dev/edge/litert/conversion/pytorch/genai"
         )
@@ -95,7 +109,7 @@ def convert_to_tflite(
     sample_mask = torch.ones((1, max_seq_length), dtype=torch.long)
     sample_pos = torch.arange(max_seq_length, dtype=torch.long).unsqueeze(0)
 
-    converted = litert_torch.convert(
+    converted = _torch_mod.convert(
         edge_model.eval(),
         (sample_ids, sample_mask, sample_pos),
         quant_config=GenerativeQuantRecipe(
