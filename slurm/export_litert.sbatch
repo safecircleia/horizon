@@ -63,7 +63,7 @@ fi
 export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
-uv pip install --quiet litert-torch litert-lm-builder
+uv pip install --quiet tensorflow litert-torch litert-lm-builder
 
 cd "$JOBSCRATCH"
 
