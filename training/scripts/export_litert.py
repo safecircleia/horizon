@@ -113,7 +113,7 @@ def convert_and_package(
         quantize=litert_quant,
         export_config=export_config,
         output_format="litertlm",
-        hf_tokenizer_model_path=merged_dir,
+        hf_tokenizer_model_path=str(Path(merged_dir) / "tokenizer.json"),
         llm_model_type="gemma3",
         model_prompt_prefix="<start_of_turn>model\n",
         model_prompt_suffix="<end_of_turn>\n",
