@@ -355,20 +355,35 @@ language:
 tags:
 - child-safety
 - content-moderation
-- onnx
+- risk-detection
+- gemma
+- fine-tuned
 - mobile
 - on-device
-- mobilebert
-- distilled
-pipeline_tag: text-classification
-base_model: google/mobilebert-uncased
+- litert
+- litert-lm
+pipeline_tag: text-generation
+base_model: google/gemma-3-1b-it
 ---
 
-# Horizon Mobile — On-Device Child Safety Filter
+# Horizon Mobile — On-Device Child Safety Risk Detection
 
-**Horizon Mobile** is a lightweight (~25M parameter) binary risk classifier for on-device child safety detection. Distilled from [Horizon Full v2](https://huggingface.co/safecircleai/horizon-full) using knowledge distillation on 1.6M synthetic conversations. Designed to run entirely on-device as a fast first-stage filter before escalating to the full cloud API.
+**Horizon Mobile** is a fine-tuned [Gemma 3 1B IT](https://huggingface.co/google/gemma-3-1b-it) model for on-device child safety risk detection, packaged in [LiteRT-LM](https://ai.google.dev/edge/litert-lm/overview) format for Android and iOS deployment.
+
+It runs the same structured JSON risk assessment as [Horizon Full](https://huggingface.co/safecircleai/horizon-full) — directly on-device, with no cloud dependency.
 
 > ⚠️ **License:** [SafeCircle Research License (SRL-1.0)](https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md). Commercial use prohibited without written permission. Contact [legal@safecircle.tech](mailto:legal@safecircle.tech).
+
+---
+
+## Available Variants
+
+| File | Quantization | Size | Target |
+|---|---|---|---|
+| `horizon-mobile-int8_q8_ekv1280.litertlm` | INT8 dynamic | ~1.2 GB | 6 GB+ RAM phones (mid-range 2022+) |
+| `horizon-mobile-int4_q4_block128_ekv1280.litertlm` | INT4 block-128 | ~507 MB | 4 GB RAM phones (budget/older) |
+
+Both variants share the same fine-tuned weights; only quantization differs.
 
 ---
 
@@ -376,30 +391,60 @@ base_model: google/mobilebert-uncased
 
 | Property | Value |
 |---|---|
-| Base model | [google/mobilebert-uncased](https://huggingface.co/google/mobilebert-uncased) |
-| Architecture | MobileBERT encoder → Linear(512, 2) classifier |
-| Parameters | ~25M |
-| Format | ONNX |
-| Input | Conversation text (max 512 tokens) |
-| Output | Binary: `safe` (0) / `risk` (1) + confidence |
-| Inference | ~25ms on CPU |
-| Teacher model | [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full) |
-| Distillation data | 1.6M synthetic conversations |
+| Base model | [google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it) |
+| Fine-tuning | QLoRA — rank 64, alpha 128, all projection layers |
+| Training data | 500K synthetic conversations across 8 risk categories |
+| Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
+| Hardware | NVIDIA L40s (48 GB) |
+| Training steps | 8,000 |
+| Format | LiteRT-LM (.litertlm) |
+| KV cache | 1,280 tokens |
+| Prefill signatures | 8, 64, 128, 256, 512 tokens |
 
 ---
 
-## Evaluation Results
+## Risk Categories
 
-| Metric | Score |
+| Category | Description |
 |---|---|
-| **F1** | **0.9562** |
-| Precision | 0.9997 |
-| Recall | 0.9163 |
-| **False Positive Rate** | **0.10%** (1 in 1,034 benign) |
-| **False Negative Rate** | **8.37%** (332 in 3,966 risk) |
-| Accuracy | 96.8% |
+| `grooming` | Trust building, boundary testing, secrecy requests |
+| `bullying` | Harassment, threats, cyberbullying |
+| `sexual_content` | Explicit messages, inappropriate requests |
+| `isolation` | Controlling behavior, network isolation |
+| `personal_info` | Requests for identifying information |
+| `platform_migration` | Moving to less monitored platforms |
+| `threats` | Violent threats, dangerous challenges |
+| `benign` | Safe, normal conversation |
 
-> The 8.4% false negative rate means ~1 in 12 risk conversations are not flagged. **This model must always be paired with Horizon Full for full risk assessment.** It is a speed/cost optimization, not a replacement.
+---
+
+## Output Format
+
+```json
+{
+  "risk_detected": true,
+  "category": "grooming",
+  "severity": "high",
+  "confidence": 0.91,
+  "reasoning": "Adult requesting private meeting and explicit secrecy from parents."
+}
+```
+
+---
+
+## Usage
+
+### Android / iOS — LiteRT-LM SDK
+
+Load the `.litertlm` file with the [LiteRT-LM SDK](https://ai.google.dev/edge/litert-lm/overview). The model includes the tokenizer, system prompt, and chat template — no additional configuration required.
+
+### Test locally (CLI)
+
+```bash
+# Install LiteRT-LM CLI
+uvx litert-lm run horizon-mobile-int8_q8_ekv1280.litertlm \\
+    --prompt "Analyze this conversation: Child: hey, want to meet up? Don't tell your parents."
+```
 
 ---
 
@@ -409,73 +454,17 @@ base_model: google/mobilebert-uncased
 Incoming message
       │
       ▼
-┌─────────────────────────┐
-│   Horizon Mobile        │  On-device, ~25ms, free
-│   (binary filter)       │  MobileBERT ONNX
-└────────────┬────────────┘
-             │
-    ┌────────┴────────┐
-    │                 │
-  safe              risk
-    │                 │
-    ▼                 ▼
- No action    ┌───────────────────┐
-              │  Horizon Full     │  Cloud API, ~500ms
-              │  (7-category +    │  Llama-3.2 3B
-              │   severity JSON)  │
-              └────────┬──────────┘
-                       │
-                       ▼
-               Human moderator review
+Horizon Mobile (on-device, LiteRT-LM)
+      │
+      ├── safe ──► No action
+      │
+      └── risk ──► Horizon Full (cloud API, 7-category + severity)
+                        │
+                        ▼
+                  Human moderator review
 ```
 
----
-
-## Usage
-
-### Python — ONNX Runtime
-
-```python
-import numpy as np
-import onnxruntime as ort
-from transformers import AutoTokenizer
-
-session = ort.InferenceSession("horizon-mobile.onnx")
-tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-mobile")
-
-conversation = "Child: Can we meet up? Don't tell your parents."
-enc = tokenizer(
-    conversation,
-    return_tensors="np",
-    truncation=True,
-    max_length=512,
-    padding="max_length",
-)
-
-logits, = session.run(None, {
-    "input_ids": enc["input_ids"].astype(np.int64),
-    "attention_mask": enc["attention_mask"].astype(np.int64),
-})
-
-probs = np.exp(logits[0]) / np.exp(logits[0]).sum()
-label = ["safe", "risk"][probs.argmax()]
-confidence = float(probs.max())
-print(f"{label} ({confidence:.1%})")
-# risk (96.2%)
-```
-
-### iOS / Android (ONNX Runtime Mobile)
-
-Load `horizon-mobile.onnx` with the [ONNX Runtime Mobile](https://onnxruntime.ai/docs/tutorials/mobile/) SDK. Tokenize with a WordPiece tokenizer (vocab from this repo). Input: `input_ids` + `attention_mask` as int64 tensors, shape `[1, 512]`. Output: `logits` shape `[1, 2]`.
-
----
-
-## Limitations
-
-- **Binary only** — outputs `safe` / `risk`, no category or severity (use Horizon Full for that)
-- **8.4% FNR** — approximately 1 in 12 risk conversations are missed at this stage
-- **English only** — multilingual performance untested
-- **Not standalone** — must be paired with Horizon Full and human review in production
+For the full server-side model, see [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full).
 
 ---
 
@@ -588,8 +577,8 @@ def upload_gguf_models(api: HfApi, gguf_dir: str):
     print(f"  Done: https://huggingface.co/{GGUF_REPO}")
 
 
-def upload_mobile_model(api: HfApi, mobile_dir: str):
-    print(f"\n==> Uploading mobile ONNX model to {MOBILE_REPO}")
+def upload_mobile_model(api: HfApi, mobile_standard_dir: str, mobile_lite_dir: str):
+    print(f"\n==> Uploading mobile LiteRT-LM models to {MOBILE_REPO}")
     ensure_repo(api, MOBILE_REPO)
 
     api.upload_file(
@@ -599,21 +588,28 @@ def upload_mobile_model(api: HfApi, mobile_dir: str):
         commit_message="Add model card",
     )
 
-    mobile_path = Path(mobile_dir)
-    files = [f for f in mobile_path.iterdir() if f.is_file()]
-    if not files:
-        print(f"  Warning: no files found in {mobile_dir}")
-        return
-
-    for f in sorted(files):
-        size_mb = f.stat().st_size / 1e6
-        print(f"  Uploading {f.name} ({size_mb:.1f} MB)...")
-        api.upload_file(
-            path_or_fileobj=str(f),
-            path_in_repo=f.name,
-            repo_id=MOBILE_REPO,
-            commit_message=f"Upload {f.name}",
-        )
+    dirs = [
+        (mobile_standard_dir, "INT8 standard"),
+        (mobile_lite_dir, "INT4 lite"),
+    ]
+    for dir_path, label in dirs:
+        p = Path(dir_path)
+        if not p.exists():
+            print(f"  Warning: {label} dir not found: {dir_path}")
+            continue
+        files = sorted(f for f in p.iterdir() if f.is_file() and f.suffix == ".litertlm")
+        if not files:
+            print(f"  Warning: no .litertlm files found in {dir_path}")
+            continue
+        for f in files:
+            size_mb = f.stat().st_size / 1e6
+            print(f"  Uploading {f.name} ({size_mb:.0f} MB) [{label}]...")
+            api.upload_file(
+                path_or_fileobj=str(f),
+                path_in_repo=f.name,
+                repo_id=MOBILE_REPO,
+                commit_message=f"Upload {f.name}",
+            )
 
     print(f"  Done: https://huggingface.co/{MOBILE_REPO}")
 
@@ -623,7 +619,8 @@ def main():
     parser.add_argument("--what", choices=["full", "gguf", "mobile", "cards", "all"], default="all")
     parser.add_argument("--full-model-dir", default="models/horizon-full-merged")
     parser.add_argument("--gguf-dir", default="models/horizon-full-gguf")
-    parser.add_argument("--mobile-dir", default="models/mobile")
+    parser.add_argument("--mobile-standard-dir", default="models/mobile-standard")
+    parser.add_argument("--mobile-lite-dir", default="models/mobile-lite")
     args = parser.parse_args()
 
     api = HfApi()
@@ -650,10 +647,7 @@ def main():
             upload_gguf_models(api, args.gguf_dir)
 
     if args.what in ("mobile", "all"):
-        if not Path(args.mobile_dir).exists():
-            print(f"Mobile model not found at {args.mobile_dir}")
-        else:
-            upload_mobile_model(api, args.mobile_dir)
+        upload_mobile_model(api, args.mobile_standard_dir, args.mobile_lite_dir)
 
     if args.what in ("cards", "all"):
         upload_cards_and_assets(api)
