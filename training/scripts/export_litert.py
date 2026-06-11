@@ -6,9 +6,10 @@ Supports two quantization variants for different device capabilities:
   --quantization int4   ~0.7 GB, for 4 GB RAM phones (budget/older)
 
 Pipeline:
-  1. Merge LoRA weights into the base model (fp32, CPU)
-  2. Convert to TFLite via ai_edge_torch with selected quantization
-  3. Package into a .litertlm container via litert-lm-builder
+  1. Merge LoRA weights into a standard HF safetensors checkpoint (CPU)
+  2. Load merged checkpoint into litert-torch's Gemma3 Decoder
+  3. Convert + quantize to TFLite via litert-torch
+  4. Package into a .litertlm container (includes tokenizer + metadata)
 
 Usage:
     # Standard variant (INT8, 6GB+ phones)
@@ -25,11 +26,10 @@ Usage:
         --merged-dir models/mobile-standard/merged
 
 Requirements:
-    uv pip install litert-torch litert-lm-builder
+    uv pip install tensorflow litert-torch litert-lm-builder
 """
 
 import argparse
-import subprocess
 import sys
 from pathlib import Path
 
@@ -39,7 +39,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.model.mobile import MOBILE_BASE_MODEL, SYSTEM_PROMPT
 
-QUANT_OPTIONS = ("int8", "int4")
+QUANT_MAP = {
+    "int8": "dynamic_int8",
+    "int4": "dynamic_int4_block128",
+}
 
 
 # ── Step 1: merge LoRA ────────────────────────────────────────────────────────
@@ -64,111 +67,77 @@ def merge_lora(checkpoint_path: str, output_dir: str) -> None:
     print(f"Merged checkpoint saved to: {output_dir}")
 
 
-# ── Step 2: convert to TFLite ─────────────────────────────────────────────────
+# ── Step 2+3+4: convert via litert-torch ──────────────────────────────────────
 
-def convert_to_tflite(
+def convert_and_package(
     merged_dir: str,
-    tflite_path: str,
-    max_seq_length: int,
+    output_dir: str,
     quantization: str,
-) -> None:
-    _torch_mod = None
-    for _pkg in ("litert_torch", "ai_edge_torch"):
-        try:
-            _torch_mod = __import__(_pkg)
-            _model_builder = __import__(
-                f"{_pkg}.generative.utilities.model_builder", fromlist=["model_builder"]
-            )
-            _quant = __import__(
-                f"{_pkg}.quantize.quant_recipe",
-                fromlist=["Dtype", "GenerativeQuantRecipe", "QuantRecipe"],
-            )
-            model_builder = _model_builder
-            Dtype = _quant.Dtype
-            GenerativeQuantRecipe = _quant.GenerativeQuantRecipe
-            QuantRecipe = _quant.QuantRecipe
-            break
-        except ImportError as _e:
-            print(f"  [{_pkg}] import failed: {_e}")
-            _torch_mod = None
-
-    if _torch_mod is None:
-        print(
-            "ERROR: neither litert_torch nor ai_edge_torch could be imported.\n"
-            "Install with: uv pip install litert-torch\n"
-            "See: https://ai.google.dev/edge/litert/conversion/pytorch/genai"
-        )
-        sys.exit(1)
-
-    quant_dtype = Dtype.INT8 if quantization == "int8" else Dtype.INT4
-    print(f"Converting to TFLite ({quantization.upper()}, max_seq_length={max_seq_length})...")
-
-    edge_model = model_builder.build_model(merged_dir, max_seq_length=max_seq_length)
-
-    sample_ids = torch.zeros((1, max_seq_length), dtype=torch.long)
-    sample_mask = torch.ones((1, max_seq_length), dtype=torch.long)
-    sample_pos = torch.arange(max_seq_length, dtype=torch.long).unsqueeze(0)
-
-    converted = _torch_mod.convert(
-        edge_model.eval(),
-        (sample_ids, sample_mask, sample_pos),
-        quant_config=GenerativeQuantRecipe(
-            default=QuantRecipe(weight_dtype=quant_dtype)
-        ),
-    )
-
-    Path(tflite_path).parent.mkdir(parents=True, exist_ok=True)
-    converted.export(tflite_path)
-    size_mb = Path(tflite_path).stat().st_size / 1024 / 1024
-    print(f"TFLite model saved: {tflite_path} ({size_mb:.1f} MB)")
-
-
-# ── Step 3: package into .litertlm ───────────────────────────────────────────
-
-def build_litertlm(
-    tflite_path: str,
-    tokenizer_dir: str,
-    output_path: str,
+    kv_cache_max_len: int,
+    prefill_seq_lens: list,
     variant: str,
     version: str,
-) -> None:
-    sp_model = next(Path(tokenizer_dir).glob("*.model"), None)
-    if sp_model is None:
-        sp_model = next(Path(tokenizer_dir).glob("tokenizer*"), None)
-    if sp_model is None:
-        print(f"ERROR: No SentencePiece .model file found in: {tokenizer_dir}")
+) -> str:
+    try:
+        from litert_torch.generative.examples.gemma3 import decoder as gemma3_decoder
+        from litert_torch.generative.utilities import converter
+        from litert_torch.generative.utilities.export_config import ExportConfig
+        from litert_torch.generative.layers import kv_cache as kv_utils
+    except ImportError as e:
+        print(f"ERROR: litert-torch import failed: {e}")
+        print("Install with: uv pip install tensorflow litert-torch litert-lm-builder")
         sys.exit(1)
 
-    cmd = [
-        "litert-lm-builder",
-        "system_metadata",
-        "--str", "model_name", f"horizon-mobile-{variant}",
-        "--str", "base_model", MOBILE_BASE_MODEL,
-        "--str", "variant", variant,
-        "--str", "system_prompt", SYSTEM_PROMPT,
-        "sp_tokenizer",
-        "--path", str(sp_model),
-        "tflite_model",
-        "--path", str(tflite_path),
-        "--model_type", "prefill_decode",
-        "--str_metadata", "model_version", version,
-        "--str_metadata", "quantization", variant,
-        "output",
-        "--path", str(output_path),
-    ]
+    litert_quant = QUANT_MAP[quantization]
+    print(f"Loading merged model from: {merged_dir}")
+    pytorch_model = gemma3_decoder.build_model_1b(
+        checkpoint_path=merged_dir,
+        mask_cache_size=0,
+    )
 
-    print("Building .litertlm container...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print("ERROR: litert-lm-builder failed:")
-        print(result.stderr)
-        sys.exit(1)
+    export_config = ExportConfig(
+        mask_as_input=True,
+        kvcache_layout=kv_utils.KV_LAYOUT_TRANSPOSED,
+    )
 
-    if result.stdout:
-        print(result.stdout)
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    size_mb = Path(output_path).stat().st_size / 1024 / 1024
-    print(f".litertlm ready: {output_path} ({size_mb:.1f} MB)")
+    print(f"Converting to LiteRT-LM ({quantization.upper()}, kv={kv_cache_max_len}, prefill={prefill_seq_lens})...")
+    converter.convert_to_litert(
+        pytorch_model=pytorch_model,
+        output_path=str(output_dir_path),
+        output_name_prefix=f"horizon-mobile-{variant}",
+        prefill_seq_len=prefill_seq_lens,
+        kv_cache_max_len=kv_cache_max_len,
+        quantize=litert_quant,
+        export_config=export_config,
+        output_format="litertlm",
+        hf_tokenizer_model_path=merged_dir,
+        llm_model_type="gemma3",
+        model_prompt_prefix="<start_of_turn>model\n",
+        model_prompt_suffix="<end_of_turn>\n",
+        user_prompt_prefix=f"<bos>{SYSTEM_PROMPT}<start_of_turn>user\n",
+        user_prompt_suffix="<end_of_turn>\n<start_of_turn>model\n",
+    )
+
+    litertlm_files = list(output_dir_path.glob("*.litertlm"))
+    if litertlm_files:
+        out = litertlm_files[0]
+        size_mb = out.stat().st_size / 1024 / 1024
+        print(f".litertlm ready: {out} ({size_mb:.1f} MB)")
+        return str(out)
+
+    # Fallback: convert_to_litert may have produced a .tflite only
+    tflite_files = list(output_dir_path.glob("*.tflite"))
+    if tflite_files:
+        out = tflite_files[0]
+        size_mb = out.stat().st_size / 1024 / 1024
+        print(f"TFLite model ready: {out} ({size_mb:.1f} MB)")
+        return str(out)
+
+    print("WARNING: no output file found in output directory")
+    return str(output_dir_path)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -186,12 +155,16 @@ def main() -> None:
         help="Output directory (default: models/mobile-standard)"
     )
     parser.add_argument(
-        "--quantization", default="int8", choices=QUANT_OPTIONS,
+        "--quantization", default="int8", choices=list(QUANT_MAP.keys()),
         help="int8 (~1.2GB, 6GB+ phones) or int4 (~0.7GB, 4GB phones) (default: int8)"
     )
     parser.add_argument(
-        "--max-seq-length", type=int, default=512,
-        help="Max sequence length for TFLite export (default: 512)"
+        "--kv-cache-max-len", type=int, default=1280,
+        help="KV cache size — max tokens (prefill + decode). Default: 1280"
+    )
+    parser.add_argument(
+        "--prefill-seq-lens", type=int, nargs="+", default=[8, 64, 128, 256, 512],
+        help="Prefill sequence lengths exported as separate signatures"
     )
     parser.add_argument(
         "--version", default="1.0.0",
@@ -207,28 +180,30 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    output_dir = Path(args.output)
     variant = args.quantization
-
-    merged_dir = args.merged_dir or str(output_dir / "merged")
-    tflite_path = str(output_dir / "model.tflite")
-    litertlm_path = str(output_dir / f"horizon-mobile-{variant}.litertlm")
+    merged_dir = args.merged_dir or str(Path(args.output) / "merged")
 
     if args.skip_merge and Path(merged_dir).exists():
         print(f"Skipping merge — using existing: {merged_dir}")
     else:
         merge_lora(args.checkpoint, merged_dir)
 
-    convert_to_tflite(merged_dir, tflite_path, args.max_seq_length, variant)
-    build_litertlm(tflite_path, merged_dir, litertlm_path, variant, args.version)
+    out = convert_and_package(
+        merged_dir=merged_dir,
+        output_dir=args.output,
+        quantization=variant,
+        kv_cache_max_len=args.kv_cache_max_len,
+        prefill_seq_lens=args.prefill_seq_lens,
+        variant=variant,
+        version=args.version,
+    )
 
     print("\nExport complete.")
-    print(f"  Variant            : {variant}")
-    print(f"  Merged checkpoint  : {merged_dir}")
-    print(f"  TFLite model       : {tflite_path}")
-    print(f"  LiteRT-LM container: {litertlm_path}")
+    print(f"  Variant         : {variant}")
+    print(f"  Merged checkpoint: {merged_dir}")
+    print(f"  Output           : {out}")
     print(f"\nTest locally:")
-    print(f"  uvx litert-lm run {litertlm_path} --prompt 'Hello'")
+    print(f"  uvx litert-lm run {out} --prompt 'Hello'")
 
 
 if __name__ == "__main__":
