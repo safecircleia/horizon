@@ -243,7 +243,7 @@ python -m training.scripts.train --config training/configs/mobile.yaml
 ### 2. Install export dependencies (workstation only)
 
 ```bash
-uv pip install ai-edge-torch litert-lm-builder
+uv pip install litert-torch litert-lm-builder
 ```
 
 ### 3. Export both variants
@@ -344,7 +344,7 @@ Off-task or jailbreak queries always return:
 - [uv](https://github.com/astral-sh/uv) package manager
 - CUDA-capable GPU (H100/L4 for full runs, any 8 GB+ GPU for quick runs)
 - HuggingFace token with `safecircleai` org access
-- `ai-edge-torch` + `litert-lm-builder` (only for mobile export, install separately)
+- `litert-torch` + `litert-lm-builder` (only for mobile export, install separately)
 
 ---
 

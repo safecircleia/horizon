@@ -25,7 +25,7 @@ Usage:
         --merged-dir models/mobile-standard/merged
 
 Requirements:
-    uv pip install ai-edge-torch litert-lm-builder
+    uv pip install litert-torch litert-lm-builder
 """
 
 import argparse
@@ -73,15 +73,15 @@ def convert_to_tflite(
     quantization: str,
 ) -> None:
     try:
-        import ai_edge_torch
-        from ai_edge_torch.generative.utilities import model_builder
-        from ai_edge_torch.quantize.quant_recipe import (
+        import litert_torch
+        from litert_torch.generative.utilities import model_builder
+        from litert_torch.quantize.quant_recipe import (
             Dtype, GenerativeQuantRecipe, QuantRecipe,
         )
     except ImportError:
         print(
-            "ERROR: ai_edge_torch is not installed.\n"
-            "Install with: uv pip install ai-edge-torch\n"
+            "ERROR: litert_torch is not installed.\n"
+            "Install with: uv pip install litert-torch\n"
             "See: https://ai.google.dev/edge/litert/conversion/pytorch/genai"
         )
         sys.exit(1)
@@ -95,7 +95,7 @@ def convert_to_tflite(
     sample_mask = torch.ones((1, max_seq_length), dtype=torch.long)
     sample_pos = torch.arange(max_seq_length, dtype=torch.long).unsqueeze(0)
 
-    converted = ai_edge_torch.convert(
+    converted = litert_torch.convert(
         edge_model.eval(),
         (sample_ids, sample_mask, sample_pos),
         quant_config=GenerativeQuantRecipe(
