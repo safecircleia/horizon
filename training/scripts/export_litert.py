@@ -55,7 +55,7 @@ def merge_lora(checkpoint_path: str, output_dir: str) -> None:
     tokenizer = AutoTokenizer.from_pretrained(base)
     model = AutoModelForCausalLM.from_pretrained(
         base,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float32,
         device_map="cpu",
     )
     model = PeftModel.from_pretrained(model, checkpoint_path)
@@ -119,7 +119,8 @@ def convert_and_package(
         model_prompt_suffix="<end_of_turn>\n",
         user_prompt_prefix=f"<bos>{SYSTEM_PROMPT}<start_of_turn>user\n",
         user_prompt_suffix="<end_of_turn>\n<start_of_turn>model\n",
-        stop_token_ids=[1, 107],  # <eos>=1, <end_of_turn>=107
+        stop_tokens=["<end_of_turn>", "<eos>"],
+        stop_token_ids=[1, 107],
     )
 
     litertlm_files = list(output_dir_path.glob("*.litertlm"))
