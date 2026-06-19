@@ -55,7 +55,7 @@ def merge_lora(checkpoint_path: str, output_dir: str) -> None:
     tokenizer = AutoTokenizer.from_pretrained(base)
     model = AutoModelForCausalLM.from_pretrained(
         base,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.bfloat16,
         device_map="cpu",
     )
     model = PeftModel.from_pretrained(model, checkpoint_path)
