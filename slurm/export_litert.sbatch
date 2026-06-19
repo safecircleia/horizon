@@ -9,12 +9,12 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-export
-#SBATCH --partition=gpu
+#SBATCH --partition=gpuMin
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=18
-#SBATCH --gres=gpu:nvidia_l4
-#SBATCH --mem=60G
+#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:1
+#SBATCH --mem=32G
 #SBATCH --time=02:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
 #SBATCH --error=/slurm/home/%u/output/%j/terminal.err
