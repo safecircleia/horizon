@@ -3,7 +3,7 @@
 # Upload: python scripts/upload_to_hf.py --what edge-4b --edge-4b-dir models/horizon-edge-4b-merged
 
 model:
-  base_model: "google/gemma-4-E4B"
+  base_model: "google/gemma-4-E4B-it"
   torch_dtype: "bfloat16"
   max_seq_length: 4096
   attn_implementation: "sdpa"

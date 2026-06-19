@@ -498,7 +498,7 @@ tags:
 - risk-detection
 - gemma
 - fine-tuned
-base_model: google/gemma-4-E2B
+base_model: google/gemma-4-E2B-it
 pipeline_tag: text-generation
 ---
 
@@ -514,7 +514,7 @@ pipeline_tag: text-generation
 
 | Property | Value |
 |---|---|
-| Base model | [google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B) |
+| Base model | [google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it) |
 | Fine-tuning | QLoRA — rank 64, alpha 128, all projection layers |
 | Training data | 1.6M synthetic conversations across 8 categories |
 | Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
@@ -603,7 +603,7 @@ tags:
 - risk-detection
 - gemma
 - fine-tuned
-base_model: google/gemma-4-E4B
+base_model: google/gemma-4-E4B-it
 pipeline_tag: text-generation
 ---
 
@@ -619,7 +619,7 @@ pipeline_tag: text-generation
 
 | Property | Value |
 |---|---|
-| Base model | [google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) |
+| Base model | [google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it) |
 | Fine-tuning | QLoRA — rank 128, alpha 256, all projection layers |
 | Training data | 1.6M synthetic conversations across 8 categories |
 | Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
