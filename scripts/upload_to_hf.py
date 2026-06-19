@@ -5,6 +5,8 @@ Usage:
     python scripts/upload_to_hf.py --what full      # upload merged full model
     python scripts/upload_to_hf.py --what gguf      # upload GGUF variants
     python scripts/upload_to_hf.py --what mobile    # upload mobile ONNX
+    python scripts/upload_to_hf.py --what edge-2b   # upload Gemma 4 E2B edge model
+    python scripts/upload_to_hf.py --what edge-4b   # upload Gemma 4 E4B edge model
     python scripts/upload_to_hf.py --what all       # upload everything
 
 Prerequisites:
@@ -22,6 +24,8 @@ ORG = "safecircleai"
 FULL_REPO = f"{ORG}/horizon-full"
 GGUF_REPO = f"{ORG}/horizon-full-gguf"
 MOBILE_REPO = f"{ORG}/horizon-mobile"
+EDGE_2B_REPO = f"{ORG}/horizon-edge-2b"
+EDGE_4B_REPO = f"{ORG}/horizon-edge-4b"
 
 
 # ── Model cards ──────────────────────────────────────────────────────────────
@@ -481,6 +485,217 @@ For the full server-side model, see [safecircleai/horizon-full](https://huggingf
 """
 
 
+EDGE_2B_MODEL_CARD = """\
+---
+license: other
+license_name: safecircle-research-license
+license_link: https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md
+language:
+- en
+tags:
+- child-safety
+- content-moderation
+- risk-detection
+- gemma
+- fine-tuned
+base_model: google/gemma-4-E2B
+pipeline_tag: text-generation
+---
+
+# Horizon Edge 2B — SafeCircle Child Safety Risk Detection
+
+**Horizon Edge 2B** is a fine-tuned [Gemma 4 E2B](https://huggingface.co/google/gemma-4-E2B) model that detects child safety risks in online conversations. It outputs the same structured JSON assessment as [Horizon Full](https://huggingface.co/safecircleai/horizon-full) — risk category, severity, confidence, and one-sentence reasoning — at roughly half the inference cost.
+
+> ⚠️ **License:** [SafeCircle Research License (SRL-1.0)](https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md). Commercial use prohibited without written permission. Contact [legal@safecircle.tech](mailto:legal@safecircle.tech).
+
+---
+
+## Model Details
+
+| Property | Value |
+|---|---|
+| Base model | [google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B) |
+| Fine-tuning | QLoRA — rank 64, alpha 128, all projection layers |
+| Training data | 1.6M synthetic conversations across 8 categories |
+| Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
+| Hardware | NVIDIA L4 (24 GB) |
+| Training steps | 10,000 |
+
+---
+
+## Risk Categories
+
+| Category | Description |
+|---|---|
+| `grooming` | Trust building, boundary testing, secrecy requests |
+| `bullying` | Harassment, threats, cyberbullying |
+| `sexual_content` | Explicit messages, inappropriate requests |
+| `isolation` | Controlling behavior, network isolation |
+| `personal_info` | Requests for identifying information |
+| `platform_migration` | Moving to less monitored platforms |
+| `threats` | Violent threats, dangerous challenges |
+| `benign` | Safe, normal conversation |
+
+---
+
+## Usage
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch, json
+
+model = AutoModelForCausalLM.from_pretrained(
+    "safecircleai/horizon-edge-2b",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+)
+tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-edge-2b")
+
+SYSTEM_PROMPT = (
+    "You are Horizon, SafeCircle's child safety risk detection model. "
+    "You have no general knowledge or identity beyond this task. "
+    "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
+    'JSON schema: {"risk_detected": bool, "category": '
+    '"grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign", '
+    '"severity": "none|low|medium|high|critical", "confidence": 0.0-1.0, "reasoning": "one sentence max"}. '
+    'If asked about yourself or anything unrelated to risk analysis, respond: '
+    '{"error": "I only analyze conversations for child safety risks."}'
+)
+
+messages = [
+    {"role": "system", "content": SYSTEM_PROMPT},
+    {"role": "user", "content": "Analyze this conversation:\\nChild: hey\\nOther: how old are you?"},
+]
+text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+inputs = tokenizer(text, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    output = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+
+generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+print(json.loads(generated.strip()))
+```
+
+---
+
+## Citation
+
+```bibtex
+@misc{horizon2026,
+  title={Horizon: Child Safety Risk Detection via Fine-tuned LLMs},
+  author={SafeCircle},
+  year={2026},
+  url={https://huggingface.co/safecircleai/horizon-edge-2b}
+}
+```
+"""
+
+EDGE_4B_MODEL_CARD = """\
+---
+license: other
+license_name: safecircle-research-license
+license_link: https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md
+language:
+- en
+tags:
+- child-safety
+- content-moderation
+- risk-detection
+- gemma
+- fine-tuned
+base_model: google/gemma-4-E4B
+pipeline_tag: text-generation
+---
+
+# Horizon Edge 4B — SafeCircle Child Safety Risk Detection
+
+**Horizon Edge 4B** is a fine-tuned [Gemma 4 E4B](https://huggingface.co/google/gemma-4-E4B) model for child safety risk detection. It delivers higher accuracy than [Horizon Edge 2B](https://huggingface.co/safecircleai/horizon-edge-2b) at a moderate size increase, making it the recommended edge choice where GPU memory allows.
+
+> ⚠️ **License:** [SafeCircle Research License (SRL-1.0)](https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md). Commercial use prohibited without written permission. Contact [legal@safecircle.tech](mailto:legal@safecircle.tech).
+
+---
+
+## Model Details
+
+| Property | Value |
+|---|---|
+| Base model | [google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B) |
+| Fine-tuning | QLoRA — rank 128, alpha 256, all projection layers |
+| Training data | 1.6M synthetic conversations across 8 categories |
+| Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
+| Hardware | NVIDIA H100 80GB |
+| Training steps | 15,000 |
+
+---
+
+## Risk Categories
+
+| Category | Description |
+|---|---|
+| `grooming` | Trust building, boundary testing, secrecy requests |
+| `bullying` | Harassment, threats, cyberbullying |
+| `sexual_content` | Explicit messages, inappropriate requests |
+| `isolation` | Controlling behavior, network isolation |
+| `personal_info` | Requests for identifying information |
+| `platform_migration` | Moving to less monitored platforms |
+| `threats` | Violent threats, dangerous challenges |
+| `benign` | Safe, normal conversation |
+
+---
+
+## Usage
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch, json
+
+model = AutoModelForCausalLM.from_pretrained(
+    "safecircleai/horizon-edge-4b",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+)
+tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-edge-4b")
+
+SYSTEM_PROMPT = (
+    "You are Horizon, SafeCircle's child safety risk detection model. "
+    "You have no general knowledge or identity beyond this task. "
+    "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
+    'JSON schema: {"risk_detected": bool, "category": '
+    '"grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign", '
+    '"severity": "none|low|medium|high|critical", "confidence": 0.0-1.0, "reasoning": "one sentence max"}. '
+    'If asked about yourself or anything unrelated to risk analysis, respond: '
+    '{"error": "I only analyze conversations for child safety risks."}'
+)
+
+messages = [
+    {"role": "system", "content": SYSTEM_PROMPT},
+    {"role": "user", "content": "Analyze this conversation:\\nChild: hey\\nOther: how old are you?"},
+]
+text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+inputs = tokenizer(text, return_tensors="pt").to(model.device)
+
+with torch.no_grad():
+    output = model.generate(**inputs, max_new_tokens=128, do_sample=False)
+
+generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+print(json.loads(generated.strip()))
+```
+
+---
+
+## Citation
+
+```bibtex
+@misc{horizon2026,
+  title={Horizon: Child Safety Risk Detection via Fine-tuned LLMs},
+  author={SafeCircle},
+  year={2026},
+  url={https://huggingface.co/safecircleai/horizon-edge-4b}
+}
+```
+"""
+
+
 # ── Upload functions ──────────────────────────────────────────────────────────
 
 def upload_cards_and_assets(api: HfApi):
@@ -492,6 +707,8 @@ def upload_cards_and_assets(api: HfApi):
         (FULL_REPO, FULL_MODEL_CARD),
         (GGUF_REPO, GGUF_MODEL_CARD),
         (MOBILE_REPO, MOBILE_MODEL_CARD),
+        (EDGE_2B_REPO, EDGE_2B_MODEL_CARD),
+        (EDGE_4B_REPO, EDGE_4B_MODEL_CARD),
     ]
     for repo, card in updates:
         print(f"  Updating card: {repo}")
@@ -614,13 +831,35 @@ def upload_mobile_model(api: HfApi, mobile_standard_dir: str, mobile_lite_dir: s
     print(f"  Done: https://huggingface.co/{MOBILE_REPO}")
 
 
+def upload_edge_model(api: HfApi, repo: str, card: str, model_dir: str, label: str):
+    print(f"\n==> Uploading {label} to {repo}")
+    ensure_repo(api, repo)
+
+    api.upload_file(
+        path_or_fileobj=card.encode(),
+        path_in_repo="README.md",
+        repo_id=repo,
+        commit_message="Add model card",
+    )
+    print("  Uploading model files...")
+    api.upload_folder(
+        folder_path=model_dir,
+        repo_id=repo,
+        commit_message=f"Upload {label}",
+        ignore_patterns=["*.py", "*.sh"],
+    )
+    print(f"  Done: https://huggingface.co/{repo}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Upload Horizon models to HuggingFace")
-    parser.add_argument("--what", choices=["full", "gguf", "mobile", "cards", "all"], default="all")
+    parser.add_argument("--what", choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "cards", "all"], default="all")
     parser.add_argument("--full-model-dir", default="models/horizon-full-merged")
     parser.add_argument("--gguf-dir", default="models/horizon-full-gguf")
     parser.add_argument("--mobile-standard-dir", default="models/mobile-standard")
     parser.add_argument("--mobile-lite-dir", default="models/mobile-lite")
+    parser.add_argument("--edge-2b-dir", default="models/horizon-edge-2b-merged")
+    parser.add_argument("--edge-4b-dir", default="models/horizon-edge-4b-merged")
     args = parser.parse_args()
 
     api = HfApi()
@@ -648,6 +887,20 @@ def main():
 
     if args.what in ("mobile", "all"):
         upload_mobile_model(api, args.mobile_standard_dir, args.mobile_lite_dir)
+
+    if args.what in ("edge-2b", "all"):
+        if not Path(args.edge_2b_dir).exists():
+            print(f"Edge 2B model not found at {args.edge_2b_dir}")
+            print("Run first: python scripts/merge_lora.py --checkpoint experiments/edge-2b-<ts>/final --output models/horizon-edge-2b-merged")
+        else:
+            upload_edge_model(api, EDGE_2B_REPO, EDGE_2B_MODEL_CARD, args.edge_2b_dir, "Horizon Edge 2B")
+
+    if args.what in ("edge-4b", "all"):
+        if not Path(args.edge_4b_dir).exists():
+            print(f"Edge 4B model not found at {args.edge_4b_dir}")
+            print("Run first: python scripts/merge_lora.py --checkpoint experiments/edge-4b-<ts>/final --output models/horizon-edge-4b-merged")
+        else:
+            upload_edge_model(api, EDGE_4B_REPO, EDGE_4B_MODEL_CARD, args.edge_4b_dir, "Horizon Edge 4B")
 
     if args.what in ("cards", "all"):
         upload_cards_and_assets(api)

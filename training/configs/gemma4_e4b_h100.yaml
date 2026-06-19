@@ -1,0 +1,58 @@
+# Horizon Edge 4B — Gemma 4 E4B fine-tune (H100 80GB VRAM)
+# Train:  python -m training.scripts.train --config training/configs/gemma4_e4b_h100.yaml
+# Upload: python scripts/upload_to_hf.py --what edge-4b --edge-4b-dir models/horizon-edge-4b-merged
+
+model:
+  base_model: "google/gemma-4-E4B"
+  torch_dtype: "bfloat16"
+  max_seq_length: 4096
+  attn_implementation: "sdpa"
+
+lora:
+  rank: 128
+  alpha: 256
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
+quantization:
+  load_in_4bit: false
+
+training:
+  output_dir: "experiments/edge-4b-{timestamp}"
+  max_steps: 15000
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  learning_rate: 0.00015
+  lr_scheduler_type: "cosine_with_restarts"
+  warmup_steps: 300
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: false
+  bf16: true
+  logging_steps: 25
+  eval_steps: 1000
+  save_steps: 1000
+  save_total_limit: 5
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  report_to: "tensorboard"
+  optim: "adamw_torch_fused"
+  dataloader_num_workers: 20
+  dataloader_pin_memory: true
+  dataloader_prefetch_factor: 4
+
+data:
+  train_file: "data/processed/train.jsonl"
+  eval_file: "data/processed/eval.jsonl"
+  train_split: 0.9
+  max_seq_length: 4096
+  cache_dir: "data/.tokenized_cache"
