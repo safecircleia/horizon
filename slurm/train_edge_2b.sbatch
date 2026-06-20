@@ -8,11 +8,11 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-edge-2b
-#SBATCH --partition=gpu
+#SBATCH --partition=gpuUltra
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --gres=gpu:nvidia_l40s
+#SBATCH --gres=gpu:nvidia_h100_nvl
 #SBATCH --mem=60G
 #SBATCH --time=2-00:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out

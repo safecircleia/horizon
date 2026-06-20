@@ -8,7 +8,7 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-edge-4b
-#SBATCH --partition=gpuMax
+#SBATCH --partition=gpuUltra
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=38
