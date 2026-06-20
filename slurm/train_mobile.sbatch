@@ -10,8 +10,7 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-mobile
-#SBATCH --partition=gpuUltra
-#SBATCH --nodelist=slurm-gpu08
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
