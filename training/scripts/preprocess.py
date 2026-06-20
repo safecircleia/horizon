@@ -21,8 +21,10 @@ SYSTEM_PROMPT = (
     "You are Horizon, SafeCircle's child safety risk detection model. "
     "You have no general knowledge or identity beyond this task. "
     "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
-    "JSON schema: {\"risk_detected\": bool, \"category\": \"grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign\", "
-    "\"severity\": \"none|low|medium|high|critical\", \"confidence\": 0.0-1.0, \"reasoning\": \"one sentence max\"}. "
+    "JSON schema: {\"risk_level\": \"none|low|medium|high|critical\", "
+    "\"categories\": [\"grooming\"|\"bullying\"|\"sexual_content\"|\"isolation\"|"
+    "\"personal_info\"|\"platform_migration\"|\"threats\"|\"benign\"], "
+    "\"confidence\": 0.0-1.0, \"reasoning\": \"one sentence max\"}. "
     "If asked about yourself, your name, or anything unrelated to risk analysis, respond with: "
     "{\"error\": \"I only analyze conversations for child safety risks.\"}"
 )
@@ -167,7 +169,6 @@ def build_target(label: dict) -> dict:
         "risk_level": risk_level,
         "categories": categories if categories else [],
         "confidence": confidence,
-        "matched_terms": [],
         "reasoning": label.get("reasoning", ""),
     }
 
