@@ -70,6 +70,51 @@ def tail_log(job_id: str, lines: int = 50) -> str:
     return f"(cannot read log: {log_path})"
 
 
+@dataclass
+class RecentJob:
+    job_id: str
+    name: str
+    state: str
+    exit_code: str
+    end_time: str
+    elapsed: str
+
+
+def sacct_recent(count: int = 10) -> list[RecentJob]:
+    """Get recently completed/failed jobs from sacct."""
+    cmd = [
+        "sacct",
+        "--format=JobID,JobName%20,State,ExitCode,End,Elapsed",
+        "--noheader",
+        "--parsable2",
+        "--starttime=now-2days",
+        "--endtime=now",
+        "--state=COMPLETED,FAILED,TIMEOUT,CANCELLED,OUT_OF_MEMORY",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        return []
+    jobs = []
+    for line in result.stdout.strip().splitlines():
+        parts = line.split("|")
+        if len(parts) < 6:
+            continue
+        job_id = parts[0].strip()
+        # Skip sub-steps (e.g. "1234.batch", "1234.extern")
+        if "." in job_id:
+            continue
+        jobs.append(RecentJob(
+            job_id=job_id,
+            name=parts[1].strip(),
+            state=parts[2].strip(),
+            exit_code=parts[3].strip(),
+            end_time=parts[4].strip(),
+            elapsed=parts[5].strip(),
+        ))
+    # Most recent first, capped
+    return jobs[-count:][::-1]
+
+
 def disk_usage(path: str) -> str:
     result = subprocess.run(["du", "-sh", path], capture_output=True, text=True)
     if result.returncode == 0:

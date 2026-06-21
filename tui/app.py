@@ -19,7 +19,7 @@ from textual.widgets import (
     Static,
 )
 
-from .slurm import squeue, scancel, tail_log, sinfo, format_node_gpu, format_node_memory
+from .slurm import squeue, scancel, tail_log, sinfo, sacct_recent, format_node_gpu, format_node_memory
 from . import actions
 
 
@@ -120,6 +120,54 @@ class JobsSidebar(VerticalScroll):
             )
 
 
+# ── Recent jobs bar (bottom) ──────────────────────────────────────────────────
+
+class RecentJobsBar(Vertical):
+    DEFAULT_CSS = """
+    RecentJobsBar {
+        height: auto;
+        max-height: 10;
+        border-top: solid $accent;
+        padding: 0 1;
+    }
+    RecentJobsBar .title {
+        text-style: bold;
+        padding: 0 0 0 0;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Label("Recent Jobs", classes="title")
+        yield DataTable(id="recent-table")
+
+    def on_mount(self) -> None:
+        table = self.query_one("#recent-table", DataTable)
+        table.add_columns("ID", "Name", "State", "Exit", "Elapsed", "Ended")
+        table.cursor_type = "row"
+        self.refresh_recent()
+
+    def refresh_recent(self) -> None:
+        table = self.query_one("#recent-table", DataTable)
+        table.clear()
+        jobs = sacct_recent(8)
+        for job in jobs:
+            state_display = job.state
+            if "FAIL" in job.state or "OUT_OF_MEMORY" in job.state:
+                state_display = f"[red]{job.state}[/red]"
+            elif "COMPLETED" in job.state:
+                state_display = f"[green]{job.state}[/green]"
+            elif "TIMEOUT" in job.state or "CANCELLED" in job.state:
+                state_display = f"[yellow]{job.state}[/yellow]"
+            table.add_row(
+                job.job_id,
+                job.name[:16],
+                state_display,
+                job.exit_code,
+                job.elapsed,
+                job.end_time[-8:] if len(job.end_time) > 8 else job.end_time,
+            )
+
+
 # ── Main menu items ──────────────────────────────────────────────────────────
 
 MENU_ITEMS = [
@@ -189,7 +237,11 @@ class ActionPanel(Vertical):
 class HorizonApp(App):
     CSS = """
     Screen {
+        layout: vertical;
+    }
+    #top-area {
         layout: horizontal;
+        height: 1fr;
     }
     #main-area {
         width: 1fr;
@@ -212,7 +264,7 @@ class HorizonApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal():
+        with Horizontal(id="top-area"):
             with Vertical(id="main-area"):
                 yield ListView(
                     *[ListItem(Label(f"  {label}"), id=f"menu-{key}") for key, label in MENU_ITEMS],
@@ -220,18 +272,21 @@ class HorizonApp(App):
                 )
                 yield ActionPanel(id="action-panel")
             yield JobsSidebar(id="jobs-sidebar")
+        yield RecentJobsBar(id="recent-bar")
         yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#action-panel").display = False
-        self.set_interval(15, self._auto_refresh_jobs)
+        self.set_interval(15, self._auto_refresh)
 
-    def _auto_refresh_jobs(self) -> None:
+    def _auto_refresh(self) -> None:
         self.query_one(JobsSidebar).refresh_jobs()
+        self.query_one(RecentJobsBar).refresh_recent()
 
     def action_refresh_jobs(self) -> None:
         self.query_one(JobsSidebar).refresh_jobs()
-        self.notify("Jobs refreshed")
+        self.query_one(RecentJobsBar).refresh_recent()
+        self.notify("Refreshed")
 
     def action_back(self) -> None:
         self.query_one("#main-menu").display = True
