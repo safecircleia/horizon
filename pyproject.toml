@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-exclude = ["data*", "models*", "training*", "inference*", "notebooks*", "evaluation*", "experiments*", "quantization*", "tests*"]
+include = ["tui*"]
 
 [project]
 name = "horizon"
@@ -78,6 +78,7 @@ viz = [
 ]
 
 [project.scripts]
+horizon = "tui.app:main"
 horizon-train = "training.scripts.train:main"
 horizon-eval = "evaluation.metrics.evaluate:main"
 horizon-generate = "data.generation.generators.main:cli"
