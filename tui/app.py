@@ -254,6 +254,14 @@ class ActionPanel(Vertical):
     #panel-title {
         text-style: bold;
         padding-bottom: 1;
+        height: auto;
+    }
+    #sub-menu {
+        height: auto;
+        max-height: 8;
+    }
+    #panel-log {
+        height: 1fr;
     }
     """
 
