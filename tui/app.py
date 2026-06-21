@@ -132,6 +132,7 @@ class HorizonApp(App):
     ]
 
     current_view = reactive("menu")
+    _input_buffer: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -291,21 +292,36 @@ class HorizonApp(App):
         key = event.key
         panel = self.query_one(ActionPanel)
 
-        if self.current_view == "train" and key.isdigit():
-            idx = int(key) - 1
+        # Buffer digits, execute on Enter
+        if key.isdigit():
+            self._input_buffer += key
+            self.sub_title = f"Selection: {self._input_buffer} (Enter to confirm)"
+            return
+
+        if key == "backspace" and self._input_buffer:
+            self._input_buffer = self._input_buffer[:-1]
+            self.sub_title = f"Selection: {self._input_buffer}" if self._input_buffer else "SafeCircle Model Management"
+            return
+
+        if key != "enter" or not self._input_buffer:
+            return
+
+        idx = int(self._input_buffer) - 1
+        self._input_buffer = ""
+        self.sub_title = "SafeCircle Model Management"
+
+        if self.current_view == "train":
             configs = list(actions.TRAIN_CONFIGS.keys())
             if 0 <= idx < len(configs):
                 ok, msg = actions.submit_training(configs[idx])
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "merge" and key.isdigit():
-            idx = int(key) - 1
+        elif self.current_view == "merge":
             candidates = getattr(self, "_merge_candidates", [])
             if 0 <= idx < len(candidates):
                 exp = candidates[idx]
                 checkpoint = f"experiments/{exp['name']}/final"
-                # Infer output name from experiment name
                 if "edge-2b" in exp["name"]:
                     output = "models/horizon-edge-2b-merged"
                 elif "edge-4b" in exp["name"]:
@@ -318,17 +334,16 @@ class HorizonApp(App):
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "export" and key.isdigit():
-            export_map = {"1": "e2b", "2": "e4b"}
-            if key in export_map:
-                ok, msg = actions.submit_export_edge(export_map[key])
+        elif self.current_view == "export":
+            export_map = {0: "e2b", 1: "e4b"}
+            if idx in export_map:
+                ok, msg = actions.submit_export_edge(export_map[idx])
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
-            elif key == "3":
+            elif idx == 2:
                 panel.show_content("Mobile export requires a checkpoint path.\nUse: sbatch --export=CHECKPOINT=... slurm/export_litert.sbatch")
 
-        elif self.current_view == "evaluate" and key.isdigit():
-            idx = int(key) - 1
+        elif self.current_view == "evaluate":
             candidates = getattr(self, "_eval_candidates", [])
             if 0 <= idx < len(candidates):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
@@ -336,27 +351,25 @@ class HorizonApp(App):
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "jobs" and key.isdigit():
-            idx = int(key) - 1
+        elif self.current_view == "jobs":
             jobs_list = getattr(self, "_jobs_list", [])
             if 0 <= idx < len(jobs_list):
                 log_text = tail_log(jobs_list[idx].job_id, lines=80)
                 panel.show_log(log_text)
 
-        elif self.current_view == "cleanup" and key.isdigit():
-            idx = int(key) - 1
+        elif self.current_view == "cleanup":
             experiments = getattr(self, "_cleanup_experiments", [])
             if 0 <= idx < len(experiments):
                 ok, msg = actions.delete_experiment(experiments[idx]["path"])
                 self.notify(msg)
                 self._show_cleanup(panel)
 
-        elif self.current_view == "maintenance" and key.isdigit():
-            if key == "1":
+        elif self.current_view == "maintenance":
+            if idx == 0:
                 self.notify("Updating dependencies...")
                 ok, msg = actions.update_deps()
                 panel.show_log(msg)
-            elif key == "2":
+            elif idx == 1:
                 ok, msg = actions.clear_tokenized_cache()
                 self.notify(msg)
 
