@@ -19,7 +19,7 @@ from textual.widgets import (
     Static,
 )
 
-from .slurm import squeue, scancel, tail_log, sinfo, sacct_recent, format_node_gpu, format_node_memory
+from .slurm import squeue, scancel, tail_log, tail_err_log, sinfo, sacct_recent, format_node_gpu, format_node_memory
 from . import actions
 
 
@@ -64,6 +64,46 @@ class JobFocusModal(ModalScreen[bool]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "btn-yes")
+
+
+class JobActionsModal(ModalScreen[str]):
+    """Show actions for a recent/completed job: view stdout, stderr, details."""
+
+    DEFAULT_CSS = """
+    JobActionsModal {
+        align: center middle;
+    }
+    #job-modal-box {
+        width: 60;
+        height: auto;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    #job-modal-box ListView {
+        height: auto;
+        max-height: 12;
+    }
+    """
+
+    def __init__(self, job_id: str, job_name: str, job_state: str) -> None:
+        super().__init__()
+        self.job_id = job_id
+        self.job_name = job_name
+        self.job_state = job_state
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="job-modal-box"):
+            yield Static(f"[b]Job {self.job_id}[/b] — {self.job_name} [{self.job_state}]")
+            yield ListView(
+                ListItem(Label("  View stdout log"), id="act-stdout"),
+                ListItem(Label("  View stderr log"), id="act-stderr"),
+                ListItem(Label("  View both (stdout + stderr)"), id="act-both"),
+                ListItem(Label("  Close"), id="act-close"),
+            )
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        self.dismiss(event.item.id or "act-close")
 
 
 # ── Sidebar: running jobs ────────────────────────────────────────────────────
@@ -136,8 +176,10 @@ class RecentJobsBar(Vertical):
     }
     """
 
+    jobs: list = []
+
     def compose(self) -> ComposeResult:
-        yield Label("Recent Jobs", classes="title")
+        yield Label("Recent Jobs (Enter to inspect)", classes="title")
         yield DataTable(id="recent-table")
 
     def on_mount(self) -> None:
@@ -149,8 +191,8 @@ class RecentJobsBar(Vertical):
     def refresh_recent(self) -> None:
         table = self.query_one("#recent-table", DataTable)
         table.clear()
-        jobs = sacct_recent(8)
-        for job in jobs:
+        self.jobs = sacct_recent(8)
+        for job in self.jobs:
             state_display = job.state
             if "FAIL" in job.state or "OUT_OF_MEMORY" in job.state:
                 state_display = f"[red]{job.state}[/red]"
@@ -166,6 +208,13 @@ class RecentJobsBar(Vertical):
                 job.elapsed,
                 job.end_time[-8:] if len(job.end_time) > 8 else job.end_time,
             )
+
+    def get_job_at_cursor(self):
+        """Return the RecentJob at the current cursor row, or None."""
+        table = self.query_one("#recent-table", DataTable)
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(self.jobs):
+            return self.jobs[table.cursor_row]
+        return None
 
 
 # ── Main menu items ──────────────────────────────────────────────────────────
@@ -293,6 +342,39 @@ class HorizonApp(App):
         self.query_one("#action-panel").display = False
         self.query_one("#main-menu", ListView).focus()
         self.current_view = "menu"
+
+    # ── Recent jobs table interaction ────────────────────────────────────────
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """When a row in the recent jobs table is selected, open actions modal."""
+        if event.data_table.id != "recent-table":
+            return
+        recent_bar = self.query_one(RecentJobsBar)
+        job = recent_bar.get_job_at_cursor()
+        if not job:
+            return
+
+        def on_action(action: str) -> None:
+            panel = self.query_one(ActionPanel)
+            self.query_one("#main-menu").display = False
+            panel.display = True
+            self.current_view = "job-inspect"
+
+            if action == "act-stdout":
+                panel.show_submenu(f"Job {job.job_id} — stdout", [("job-refresh", "Refresh")])
+                panel.show_log(tail_log(job.job_id, lines=100))
+            elif action == "act-stderr":
+                panel.show_submenu(f"Job {job.job_id} — stderr", [("job-refresh", "Refresh")])
+                panel.show_log(tail_err_log(job.job_id, lines=100))
+            elif action == "act-both":
+                stdout = tail_log(job.job_id, lines=60)
+                stderr = tail_err_log(job.job_id, lines=40)
+                combined = f"{'═'*40} STDOUT {'═'*40}\n{stdout}\n{'═'*40} STDERR {'═'*40}\n{stderr}"
+                panel.show_submenu(f"Job {job.job_id} — stdout + stderr", [("job-refresh", "Refresh")])
+                panel.show_log(combined)
+            # act-close: do nothing, modal dismissed
+
+        self.push_screen(JobActionsModal(job.job_id, job.name, job.state), on_action)
 
     # ── Submit job + offer focus ─────────────────────────────────────────────
 

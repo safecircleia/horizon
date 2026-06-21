@@ -70,6 +70,17 @@ def tail_log(job_id: str, lines: int = 50) -> str:
     return f"(cannot read log: {log_path})"
 
 
+def tail_err_log(job_id: str, lines: int = 50) -> str:
+    """Read the last N lines of a job's stderr log."""
+    import os
+    user = os.environ.get("USER", "")
+    log_path = f"/slurm/home/{user}/output/{job_id}/terminal.err"
+    result = subprocess.run(["tail", f"-n{lines}", log_path], capture_output=True, text=True)
+    if result.returncode == 0:
+        return result.stdout or "(stderr is empty)"
+    return f"(cannot read log: {log_path})"
+
+
 @dataclass
 class RecentJob:
     job_id: str
