@@ -32,11 +32,11 @@ Usage:
     python scripts/upload_to_s3.py --what all --version 2.1.0 --dry-run
 
 Environment:
-    S3_BUCKET           Bucket name (required)
-    S3_PREFIX           Optional prefix under bucket (default: "models")
-    AWS_REGION          AWS region (default: eu-west-3)
-    AWS_ACCESS_KEY_ID   (or use AWS profile/role)
-    AWS_SECRET_ACCESS_KEY
+    S3_BUCKET              Bucket name (required)
+    S3_PREFIX              Optional prefix under bucket (default: "models")
+    S3_ENDPOINT_URL        S3-compatible endpoint (e.g. https://<id>.r2.cloudflarestorage.com)
+    S3_ACCESS_KEY_ID       Access key ID (Cloudflare R2 or AWS)
+    S3_SECRET_ACCESS_KEY   Secret access key
 
 Prerequisites:
     uv pip install boto3
@@ -232,7 +232,7 @@ def main():
     parser.add_argument("--version", required=True, help="Semantic version (e.g. 2.1.0)")
     parser.add_argument("--bucket", default=None, help="S3 bucket (overrides S3_BUCKET env)")
     parser.add_argument("--prefix", default=None, help="S3 prefix (overrides S3_PREFIX env, default: 'models')")
-    parser.add_argument("--region", default=None, help="AWS region (overrides AWS_REGION env)")
+    parser.add_argument("--endpoint-url", default=None, help="S3-compatible endpoint URL (overrides S3_ENDPOINT_URL env)")
     parser.add_argument("--dry-run", action="store_true", help="Print what would be uploaded without uploading")
 
     # Override local dirs
@@ -249,7 +249,9 @@ def main():
         sys.exit(1)
 
     prefix = args.prefix or os.environ.get("S3_PREFIX", "models")
-    region = args.region or os.environ.get("AWS_REGION", "eu-west-3")
+    endpoint_url = args.endpoint_url or os.environ.get("S3_ENDPOINT_URL")
+    access_key = os.environ.get("S3_ACCESS_KEY_ID")
+    secret_key = os.environ.get("S3_SECRET_ACCESS_KEY")
 
     # Apply dir overrides
     dir_overrides = {
@@ -265,15 +267,21 @@ def main():
 
     models_to_upload = list(MODEL_CONFIGS.keys()) if "all" in args.what else args.what
 
-    print(f"Bucket:  s3://{bucket}/{prefix}/")
-    print(f"Region:  {region}")
-    print(f"Version: v{args.version}")
-    print(f"Models:  {', '.join(models_to_upload)}")
+    print(f"Bucket:   s3://{bucket}/{prefix}/")
+    print(f"Endpoint: {endpoint_url or 'default (AWS)'}")
+    print(f"Version:  v{args.version}")
+    print(f"Models:   {', '.join(models_to_upload)}")
     if args.dry_run:
-        print("Mode:    DRY RUN")
+        print("Mode:     DRY RUN")
 
-    session = boto3.Session(region_name=region)
-    s3 = session.client("s3")
+    client_kwargs = {}
+    if endpoint_url:
+        client_kwargs["endpoint_url"] = endpoint_url
+    if access_key and secret_key:
+        client_kwargs["aws_access_key_id"] = access_key
+        client_kwargs["aws_secret_access_key"] = secret_key
+
+    s3 = boto3.client("s3", region_name="auto", **client_kwargs)
 
     # Verify bucket access
     if not args.dry_run:
