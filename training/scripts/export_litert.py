@@ -117,7 +117,7 @@ def convert_and_package(
         llm_model_type="gemma3",
         model_prompt_prefix="<start_of_turn>model\n",
         model_prompt_suffix="<end_of_turn>\n",
-        user_prompt_prefix=f"<bos>{SYSTEM_PROMPT}<start_of_turn>user\n",
+        user_prompt_prefix=f"<bos><start_of_turn>user\n{SYSTEM_PROMPT}\n\n",
         user_prompt_suffix="<end_of_turn>\n<start_of_turn>model\n",
         stop_tokens=["<end_of_turn>", "<eos>"],
         stop_token_ids=[1, 107],
