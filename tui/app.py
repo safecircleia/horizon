@@ -6,7 +6,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import (
+    Button,
     DataTable,
     Footer,
     Header,
@@ -19,6 +21,49 @@ from textual.widgets import (
 
 from .slurm import squeue, scancel, tail_log
 from . import actions
+
+
+# ── Job focus modal ──────────────────────────────────────────────────────────
+
+class JobFocusModal(ModalScreen[bool]):
+    """Ask user if they want to focus on the newly submitted job."""
+
+    DEFAULT_CSS = """
+    JobFocusModal {
+        align: center middle;
+    }
+    #modal-box {
+        width: 50;
+        height: auto;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    #modal-buttons {
+        layout: horizontal;
+        height: auto;
+        padding-top: 1;
+    }
+    #modal-buttons Button {
+        margin-right: 2;
+    }
+    """
+
+    def __init__(self, job_id: str, job_name: str) -> None:
+        super().__init__()
+        self.job_id = job_id
+        self.job_name = job_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-box"):
+            yield Static(f"[b]Job submitted:[/b] {self.job_id} ({self.job_name})")
+            yield Static("\nFocus this job to watch its output?")
+            with Horizontal(id="modal-buttons"):
+                yield Button("Yes, watch", id="btn-yes", variant="primary")
+                yield Button("No, back to menu", id="btn-no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "btn-yes")
 
 
 # ── Sidebar: running jobs ────────────────────────────────────────────────────
@@ -62,6 +107,7 @@ MENU_ITEMS = [
     ("merge", "Merge LoRA Adapter"),
     ("export", "Export to LiteRT-LM"),
     ("evaluate", "Run Evaluation"),
+    ("test", "Test LiteRT-LM Model"),
     ("upload", "Upload Models (HF + R2)"),
     ("jobs", "View SLURM Jobs"),
     ("cleanup", "Cleanup Experiments"),
@@ -173,6 +219,33 @@ class HorizonApp(App):
         self.query_one("#main-menu", ListView).focus()
         self.current_view = "menu"
 
+    # ── Submit job + offer focus ─────────────────────────────────────────────
+
+    def _submit_and_offer_focus(self, ok: bool, msg: str, job_name: str) -> None:
+        """After submitting a SLURM job, show a popup asking to focus it."""
+        self.action_refresh_jobs()
+        if not ok:
+            self.notify(f"Failed: {msg}")
+            return
+        job_id = msg  # sbatch returns job_id on success
+
+        def on_dismiss(focus: bool) -> None:
+            if focus:
+                self._focus_job(job_id)
+
+        self.push_screen(JobFocusModal(job_id, job_name), on_dismiss)
+
+    def _focus_job(self, job_id: str) -> None:
+        """Switch to job log view for a specific job."""
+        panel = self.query_one(ActionPanel)
+        self.query_one("#main-menu").display = False
+        panel.display = True
+        self.current_view = "jobs"
+        panel.show_submenu(f"Job {job_id} — Live Log", [("job-refresh", "Refresh log")])
+        log_text = tail_log(job_id, lines=80)
+        panel.show_log(log_text)
+        self._focused_job_id = job_id
+
     # ── Route selections from both menus ─────────────────────────────────────
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -201,6 +274,8 @@ class HorizonApp(App):
             self._show_export(panel)
         elif action == "evaluate":
             self._show_evaluate(panel)
+        elif action == "test":
+            self._show_test(panel)
         elif action == "upload":
             self._show_upload(panel)
         elif action == "jobs":
@@ -243,6 +318,17 @@ class HorizonApp(App):
         items = [(f"eval-{i}", f"{e['name']} ({e['size']})") for i, e in enumerate(finals)]
         panel.show_submenu("Run Evaluation", items)
         self._eval_candidates = finals
+
+    def _show_test(self, panel: ActionPanel) -> None:
+        # Find .litertlm files in models/
+        models_dir = actions.PROJECT_ROOT / "models"
+        litertlm_files = sorted(models_dir.rglob("*.litertlm")) if models_dir.exists() else []
+        if not litertlm_files:
+            items = [("test-default", "Run test (default model path)")]
+        else:
+            items = [(f"test-{i}", str(f.relative_to(actions.PROJECT_ROOT))) for i, f in enumerate(litertlm_files)]
+        panel.show_submenu("Test LiteRT-LM Model", items)
+        self._test_models = litertlm_files
 
     def _show_upload(self, panel: ActionPanel) -> None:
         items = [
@@ -292,14 +378,20 @@ class HorizonApp(App):
     def _handle_submenu(self, item_id: str) -> None:
         panel = self.query_one(ActionPanel)
 
+        # Refresh log for focused job
+        if item_id == "job-refresh":
+            job_id = getattr(self, "_focused_job_id", None)
+            if job_id:
+                panel.show_log(tail_log(job_id, lines=80))
+            return
+
         # Train
         if item_id.startswith("train-"):
             idx = int(item_id.split("-", 1)[1])
             configs = list(actions.TRAIN_CONFIGS.keys())
             if 0 <= idx < len(configs):
                 ok, msg = actions.submit_training(configs[idx])
-                self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-                self.action_refresh_jobs()
+                self._submit_and_offer_focus(ok, msg, configs[idx])
 
         # Merge
         elif item_id.startswith("merge-"):
@@ -317,18 +409,15 @@ class HorizonApp(App):
                 else:
                     output = "models/horizon-full-merged"
                 ok, msg = actions.submit_merge(checkpoint, output)
-                self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-                self.action_refresh_jobs()
+                self._submit_and_offer_focus(ok, msg, f"merge {exp['name']}")
 
         # Export
         elif item_id == "export-e2b":
             ok, msg = actions.submit_export_edge("e2b")
-            self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-            self.action_refresh_jobs()
+            self._submit_and_offer_focus(ok, msg, "export edge-2b")
         elif item_id == "export-e4b":
             ok, msg = actions.submit_export_edge("e4b")
-            self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-            self.action_refresh_jobs()
+            self._submit_and_offer_focus(ok, msg, "export edge-4b")
         elif item_id == "export-mobile":
             panel.show_message("Export Mobile", "Use: sbatch --export=CHECKPOINT=... slurm/export_litert.sbatch")
 
@@ -339,13 +428,23 @@ class HorizonApp(App):
             if 0 <= idx < len(candidates):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
                 ok, msg = actions.submit_evaluate(checkpoint)
-                self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-                self.action_refresh_jobs()
+                self._submit_and_offer_focus(ok, msg, f"eval {candidates[idx]['name']}")
+
+        # Test LiteRT-LM
+        elif item_id == "test-default":
+            ok, msg = actions.submit_test_litert()
+            self._submit_and_offer_focus(ok, msg, "test litert")
+        elif item_id.startswith("test-"):
+            idx = int(item_id.split("-", 1)[1])
+            test_models = getattr(self, "_test_models", [])
+            if 0 <= idx < len(test_models):
+                model_path = str(test_models[idx].relative_to(actions.PROJECT_ROOT))
+                ok, msg = actions.submit_test_litert(model_path)
+                self._submit_and_offer_focus(ok, msg, f"test {test_models[idx].name}")
 
         # Upload
         elif item_id.startswith("upload-"):
             what = item_id.replace("upload-", "")
-            # TODO: prompt for version — for now use 1.0.0
             ok, msg = actions.run_upload(what, "1.0.0")
             self.notify("Upload complete" if ok else f"Upload failed: {msg[:80]}")
             panel.show_log(msg)

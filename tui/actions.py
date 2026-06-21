@@ -62,6 +62,18 @@ def submit_evaluate(checkpoint: str) -> tuple[bool, str]:
     )
 
 
+# ── Test LiteRT-LM ──────────────────────────────────────────────────────────
+
+def submit_test_litert(model_path: str = None) -> tuple[bool, str]:
+    export_vars = {}
+    if model_path:
+        export_vars["MODEL_PATH"] = model_path
+    return sbatch(
+        str(PROJECT_ROOT / "slurm/test_litert.sbatch"),
+        export_vars or None,
+    )
+
+
 # ── Upload ───────────────────────────────────────────────────────────────────
 
 def run_upload(what: str, version: str, skip_hf: bool = False, skip_r2: bool = False) -> tuple[bool, str]:
