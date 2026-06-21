@@ -23,13 +23,19 @@ mkdir -p "$OUTDIR"
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$SUBMIT_DIR"
 
-source slurm/install_env.sh
+# Lightweight env setup — only needs litert-lm, not full training deps
+VENV="$SUBMIT_DIR/.venv"
+if [ ! -f "$VENV/bin/activate" ]; then
+    python3 -m venv "$VENV"
+fi
+source "$VENV/bin/activate"
+
+echo "Installing litert-lm..."
+uv pip install --quiet litert-lm
 
 if [ -f "$SUBMIT_DIR/.env" ]; then
     set -a; source "$SUBMIT_DIR/.env"; set +a
 fi
-
-uv pip install --quiet litert-lm 2>/dev/null || true
 
 MODEL_PATH="${MODEL_PATH:-models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm}"
 
