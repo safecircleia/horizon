@@ -6,7 +6,6 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
-from textual.timer import Timer
 from textual.widgets import (
     DataTable,
     Footer,
@@ -56,7 +55,7 @@ class JobsSidebar(Vertical):
             table.add_row(job.job_id, job.name[:14], job.state[:7], job.time)
 
 
-# ── Main menu ────────────────────────────────────────────────────────────────
+# ── Main menu items ──────────────────────────────────────────────────────────
 
 MENU_ITEMS = [
     ("train", "Submit Training Job"),
@@ -70,39 +69,38 @@ MENU_ITEMS = [
 ]
 
 
-class MainMenu(ListView):
-    DEFAULT_CSS = """
-    MainMenu {
-        width: 1fr;
-        padding: 1 2;
-    }
-    """
+# ── Action panel with a sub-ListView ─────────────────────────────────────────
 
-    def compose(self) -> ComposeResult:
-        for key, label in MENU_ITEMS:
-            yield ListItem(Label(f"  {label}"), id=f"menu-{key}")
-
-
-# ── Action panel (right of menu, left of sidebar) ────────────────────────────
-
-class ActionPanel(VerticalScroll):
+class ActionPanel(Vertical):
     DEFAULT_CSS = """
     ActionPanel {
         width: 2fr;
         border-left: solid $surface;
         padding: 1 2;
     }
+    #panel-title {
+        text-style: bold;
+        padding-bottom: 1;
+    }
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("Select an action from the menu.", id="panel-content")
+        yield Static("", id="panel-title")
+        yield ListView(id="sub-menu")
         yield Log(id="panel-log", auto_scroll=True)
 
     def on_mount(self) -> None:
         self.query_one("#panel-log", Log).display = False
 
-    def show_content(self, text: str) -> None:
-        self.query_one("#panel-content", Static).update(text)
+    def show_submenu(self, title: str, items: list[tuple[str, str]]) -> None:
+        """Show a navigable submenu. items: [(id, label), ...]"""
+        self.query_one("#panel-title", Static).update(f"[b]{title}[/b]")
+        lv = self.query_one("#sub-menu", ListView)
+        lv.clear()
+        for item_id, label in items:
+            lv.append(ListItem(Label(label), id=item_id))
+        lv.display = True
+        lv.focus()
         self.query_one("#panel-log", Log).display = False
 
     def show_log(self, text: str) -> None:
@@ -110,6 +108,14 @@ class ActionPanel(VerticalScroll):
         log.display = True
         log.clear()
         log.write(text)
+
+    def show_message(self, title: str, message: str) -> None:
+        self.query_one("#panel-title", Static).update(f"[b]{title}[/b]")
+        lv = self.query_one("#sub-menu", ListView)
+        lv.clear()
+        lv.append(ListItem(Label(message), id="msg"))
+        lv.display = True
+        self.query_one("#panel-log", Log).display = False
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
@@ -121,6 +127,9 @@ class HorizonApp(App):
     }
     #main-area {
         width: 1fr;
+    }
+    #main-menu {
+        padding: 1 2;
     }
     """
 
@@ -134,13 +143,15 @@ class HorizonApp(App):
     ]
 
     current_view = reactive("menu")
-    _input_buffer: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal():
             with Vertical(id="main-area"):
-                yield MainMenu(id="main-menu")
+                yield ListView(
+                    *[ListItem(Label(f"  {label}"), id=f"menu-{key}") for key, label in MENU_ITEMS],
+                    id="main-menu",
+                )
                 yield ActionPanel(id="action-panel")
             yield JobsSidebar(id="jobs-sidebar")
         yield Footer()
@@ -159,14 +170,24 @@ class HorizonApp(App):
     def action_back(self) -> None:
         self.query_one("#main-menu").display = True
         self.query_one("#action-panel").display = False
+        self.query_one("#main-menu", ListView).focus()
         self.current_view = "menu"
+
+    # ── Route selections from both menus ─────────────────────────────────────
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         item_id = event.item.id or ""
-        action = item_id.replace("menu-", "")
-        self._handle_action(action)
 
-    def _handle_action(self, action: str) -> None:
+        # Main menu selection
+        if item_id.startswith("menu-"):
+            action = item_id.replace("menu-", "")
+            self._open_action(action)
+            return
+
+        # Submenu selection — dispatch based on current_view
+        self._handle_submenu(item_id)
+
+    def _open_action(self, action: str) -> None:
         panel = self.query_one(ActionPanel)
         self.query_one("#main-menu").display = False
         panel.display = True
@@ -189,137 +210,100 @@ class HorizonApp(App):
         elif action == "maintenance":
             self._show_maintenance(panel)
 
+    # ── Submenu builders ─────────────────────────────────────────────────────
+
     def _show_train(self, panel: ActionPanel) -> None:
-        lines = ["[b]Submit Training Job[/b]\n"]
-        for i, name in enumerate(actions.TRAIN_CONFIGS, 1):
-            lines.append(f"  [{i}] {name}")
-        lines.append("\nPress a number key to submit.")
-        panel.show_content("\n".join(lines))
-        self._train_mode = True
+        items = [(f"train-{i}", name) for i, name in enumerate(actions.TRAIN_CONFIGS)]
+        panel.show_submenu("Submit Training Job", items)
 
     def _show_merge(self, panel: ActionPanel) -> None:
         experiments = actions.list_experiments()
-        if not experiments:
-            panel.show_content("[b]Merge LoRA[/b]\n\nNo experiments found.")
-            return
-        lines = ["[b]Merge LoRA Adapter[/b]\n"]
         finals = [e for e in experiments if (Path(e["path"]) / "final").exists()]
         if not finals:
-            lines.append("No experiments with a /final checkpoint found.")
-        else:
-            for i, exp in enumerate(finals, 1):
-                lines.append(f"  [{i}] {exp['name']} ({exp['size']})")
-            lines.append("\nPress a number key to submit merge job.")
-        panel.show_content("\n".join(lines))
+            panel.show_message("Merge LoRA", "No experiments with a /final checkpoint found.")
+            return
+        items = [(f"merge-{i}", f"{e['name']} ({e['size']})") for i, e in enumerate(finals)]
+        panel.show_submenu("Merge LoRA Adapter", items)
         self._merge_candidates = finals
 
     def _show_export(self, panel: ActionPanel) -> None:
-        lines = [
-            "[b]Export to LiteRT-LM[/b]\n",
-            "  [1] Edge 2B (Gemma 4 E2B)",
-            "  [2] Edge 4B (Gemma 4 E4B)",
-            "  [3] Mobile (Gemma 3 1B)",
-            "\nPress a number key to submit export job.",
+        items = [
+            ("export-e2b", "Edge 2B (Gemma 4 E2B)"),
+            ("export-e4b", "Edge 4B (Gemma 4 E4B)"),
+            ("export-mobile", "Mobile (Gemma 3 1B)"),
         ]
-        panel.show_content("\n".join(lines))
-        self._export_mode = True
+        panel.show_submenu("Export to LiteRT-LM", items)
 
     def _show_evaluate(self, panel: ActionPanel) -> None:
         experiments = actions.list_experiments()
         finals = [e for e in experiments if (Path(e["path"]) / "final").exists()]
         if not finals:
-            panel.show_content("[b]Evaluate[/b]\n\nNo experiments with /final checkpoint found.")
+            panel.show_message("Evaluate", "No experiments with /final checkpoint found.")
             return
-        lines = ["[b]Run Evaluation[/b]\n"]
-        for i, exp in enumerate(finals, 1):
-            lines.append(f"  [{i}] {exp['name']} ({exp['size']})")
-        lines.append("\nPress a number key to submit evaluation job.")
-        panel.show_content("\n".join(lines))
+        items = [(f"eval-{i}", f"{e['name']} ({e['size']})") for i, e in enumerate(finals)]
+        panel.show_submenu("Run Evaluation", items)
         self._eval_candidates = finals
 
     def _show_upload(self, panel: ActionPanel) -> None:
-        lines = [
-            "[b]Upload Models (HF + R2)[/b]\n",
-            "  [1] edge-2b",
-            "  [2] edge-4b",
-            "  [3] mobile",
-            "  [4] full",
-            "  [5] gguf",
-            "  [6] all",
-            "\nPress a number key. You'll be prompted for the version.",
+        items = [
+            ("upload-edge-2b", "edge-2b"),
+            ("upload-edge-4b", "edge-4b"),
+            ("upload-mobile", "mobile"),
+            ("upload-full", "full"),
+            ("upload-gguf", "gguf"),
+            ("upload-all", "all"),
         ]
-        panel.show_content("\n".join(lines))
-        self._upload_mode = True
+        panel.show_submenu("Upload Models (HF + R2)", items)
 
     def _show_jobs(self, panel: ActionPanel) -> None:
         import os
         jobs = squeue(user=os.environ.get("USER"))
         if not jobs:
-            panel.show_content("[b]SLURM Jobs[/b]\n\nNo running jobs.")
+            panel.show_message("SLURM Jobs", "No running jobs.")
             return
-        lines = ["[b]SLURM Jobs[/b]\n"]
-        for i, job in enumerate(jobs, 1):
-            lines.append(f"  [{i}] {job.job_id} | {job.name} | {job.state} | {job.time} | {job.partition}")
-        lines.append("\nPress a number to view log, or 'c' + number to cancel.")
-        panel.show_content("\n".join(lines))
+        items = [
+            (f"job-{i}", f"{j.job_id} | {j.name} | {j.state} | {j.time} | {j.partition}")
+            for i, j in enumerate(jobs)
+        ]
+        items.append(("job-cancel-header", "── Cancel a job ──"))
+        for i, j in enumerate(jobs):
+            items.append((f"cancel-{i}", f"Cancel: {j.job_id} {j.name}"))
+        panel.show_submenu("SLURM Jobs", items)
         self._jobs_list = jobs
 
     def _show_cleanup(self, panel: ActionPanel) -> None:
         experiments = actions.list_experiments()
-        models = actions.list_models()
-        lines = ["[b]Cleanup[/b]\n", "[u]Experiments:[/u]"]
-        for i, e in enumerate(experiments, 1):
-            lines.append(f"  [{i}] {e['name']} — {e['size']}")
-        lines.append(f"\n[u]Models:[/u]")
-        for m in models:
-            lines.append(f"  {m['name']} — {m['size']}")
-        lines.append("\nPress a number to delete an experiment.")
-        panel.show_content("\n".join(lines))
+        items = [(f"delete-{i}", f"{e['name']} — {e['size']}") for i, e in enumerate(experiments)]
+        if not items:
+            panel.show_message("Cleanup", "No experiments to clean up.")
+            return
+        panel.show_submenu("Cleanup — select to delete", items)
         self._cleanup_experiments = experiments
 
     def _show_maintenance(self, panel: ActionPanel) -> None:
-        lines = [
-            "[b]Maintenance[/b]\n",
-            "  [1] Update dependencies (uv pip install -r requirements.txt)",
-            "  [2] Clear tokenized cache",
-            "\nPress a number to run.",
+        items = [
+            ("maint-deps", "Update dependencies (uv pip install -r requirements.txt)"),
+            ("maint-cache", "Clear tokenized cache"),
         ]
-        panel.show_content("\n".join(lines))
-        self._maintenance_mode = True
+        panel.show_submenu("Maintenance", items)
 
-    def on_key(self, event) -> None:
-        if self.current_view == "menu":
-            return
+    # ── Submenu action dispatch ──────────────────────────────────────────────
 
-        key = event.key
+    def _handle_submenu(self, item_id: str) -> None:
         panel = self.query_one(ActionPanel)
 
-        # Buffer digits, execute on Enter
-        if key.isdigit():
-            self._input_buffer += key
-            self.sub_title = f"Selection: {self._input_buffer} (Enter to confirm)"
-            return
-
-        if key == "backspace" and self._input_buffer:
-            self._input_buffer = self._input_buffer[:-1]
-            self.sub_title = f"Selection: {self._input_buffer}" if self._input_buffer else "SafeCircle Model Management"
-            return
-
-        if key != "enter" or not self._input_buffer:
-            return
-
-        idx = int(self._input_buffer) - 1
-        self._input_buffer = ""
-        self.sub_title = "SafeCircle Model Management"
-
-        if self.current_view == "train":
+        # Train
+        if item_id.startswith("train-"):
+            idx = int(item_id.split("-", 1)[1])
             configs = list(actions.TRAIN_CONFIGS.keys())
             if 0 <= idx < len(configs):
                 ok, msg = actions.submit_training(configs[idx])
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "merge":
+        # Merge
+        elif item_id.startswith("merge-"):
+            idx = int(item_id.split("-", 1)[1])
             candidates = getattr(self, "_merge_candidates", [])
             if 0 <= idx < len(candidates):
                 exp = candidates[idx]
@@ -336,16 +320,21 @@ class HorizonApp(App):
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "export":
-            export_map = {0: "e2b", 1: "e4b"}
-            if idx in export_map:
-                ok, msg = actions.submit_export_edge(export_map[idx])
-                self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
-                self.action_refresh_jobs()
-            elif idx == 2:
-                panel.show_content("Mobile export requires a checkpoint path.\nUse: sbatch --export=CHECKPOINT=... slurm/export_litert.sbatch")
+        # Export
+        elif item_id == "export-e2b":
+            ok, msg = actions.submit_export_edge("e2b")
+            self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
+            self.action_refresh_jobs()
+        elif item_id == "export-e4b":
+            ok, msg = actions.submit_export_edge("e4b")
+            self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
+            self.action_refresh_jobs()
+        elif item_id == "export-mobile":
+            panel.show_message("Export Mobile", "Use: sbatch --export=CHECKPOINT=... slurm/export_litert.sbatch")
 
-        elif self.current_view == "evaluate":
+        # Evaluate
+        elif item_id.startswith("eval-"):
+            idx = int(item_id.split("-", 1)[1])
             candidates = getattr(self, "_eval_candidates", [])
             if 0 <= idx < len(candidates):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
@@ -353,27 +342,49 @@ class HorizonApp(App):
                 self.notify(f"{'Submitted' if ok else 'Failed'}: {msg}")
                 self.action_refresh_jobs()
 
-        elif self.current_view == "jobs":
+        # Upload
+        elif item_id.startswith("upload-"):
+            what = item_id.replace("upload-", "")
+            # TODO: prompt for version — for now use 1.0.0
+            ok, msg = actions.run_upload(what, "1.0.0")
+            self.notify("Upload complete" if ok else f"Upload failed: {msg[:80]}")
+            panel.show_log(msg)
+
+        # Jobs — view log
+        elif item_id.startswith("job-") and not item_id.startswith("job-cancel"):
+            idx = int(item_id.split("-", 1)[1])
             jobs_list = getattr(self, "_jobs_list", [])
             if 0 <= idx < len(jobs_list):
                 log_text = tail_log(jobs_list[idx].job_id, lines=80)
                 panel.show_log(log_text)
 
-        elif self.current_view == "cleanup":
+        # Jobs — cancel
+        elif item_id.startswith("cancel-"):
+            idx = int(item_id.split("-", 1)[1])
+            jobs_list = getattr(self, "_jobs_list", [])
+            if 0 <= idx < len(jobs_list):
+                ok, msg = scancel(jobs_list[idx].job_id)
+                self.notify(msg)
+                self.action_refresh_jobs()
+                self._show_jobs(panel)
+
+        # Cleanup
+        elif item_id.startswith("delete-"):
+            idx = int(item_id.split("-", 1)[1])
             experiments = getattr(self, "_cleanup_experiments", [])
             if 0 <= idx < len(experiments):
                 ok, msg = actions.delete_experiment(experiments[idx]["path"])
                 self.notify(msg)
                 self._show_cleanup(panel)
 
-        elif self.current_view == "maintenance":
-            if idx == 0:
-                self.notify("Updating dependencies...")
-                ok, msg = actions.update_deps()
-                panel.show_log(msg)
-            elif idx == 1:
-                ok, msg = actions.clear_tokenized_cache()
-                self.notify(msg)
+        # Maintenance
+        elif item_id == "maint-deps":
+            self.notify("Updating dependencies...")
+            ok, msg = actions.update_deps()
+            panel.show_log(msg)
+        elif item_id == "maint-cache":
+            ok, msg = actions.clear_tokenized_cache()
+            self.notify(msg)
 
 
 def main():
