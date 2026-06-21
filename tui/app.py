@@ -96,8 +96,10 @@ class JobActionsModal(ModalScreen[str]):
         with Vertical(id="job-modal-box"):
             yield Static(f"[b]Job {self.job_id}[/b] — {self.job_name} [{self.job_state}]")
             yield ListView(
-                ListItem(Label("  View stdout log"), id="act-stdout"),
-                ListItem(Label("  View stderr log"), id="act-stderr"),
+                ListItem(Label("  Live tail stdout"), id="act-live-stdout"),
+                ListItem(Label("  Live tail stderr"), id="act-live-stderr"),
+                ListItem(Label("  View stdout (snapshot)"), id="act-stdout"),
+                ListItem(Label("  View stderr (snapshot)"), id="act-stderr"),
                 ListItem(Label("  View both (stdout + stderr)"), id="act-both"),
                 ListItem(Label("  Close"), id="act-close"),
             )
@@ -338,6 +340,7 @@ class HorizonApp(App):
         self.notify("Refreshed")
 
     def action_back(self) -> None:
+        self._stop_live_tail()
         self.query_one("#main-menu").display = True
         self.query_one("#action-panel").display = False
         self.query_one("#main-menu", ListView).focus()
@@ -355,24 +358,27 @@ class HorizonApp(App):
             return
 
         def on_action(action: str) -> None:
-            panel = self.query_one(ActionPanel)
-            self.query_one("#main-menu").display = False
-            panel.display = True
-            self.current_view = "job-inspect"
-
-            if action == "act-stdout":
-                panel.show_submenu(f"Job {job.job_id} — stdout", [("job-refresh", "Refresh")])
-                panel.show_log(tail_log(job.job_id, lines=100))
-            elif action == "act-stderr":
-                panel.show_submenu(f"Job {job.job_id} — stderr", [("job-refresh", "Refresh")])
-                panel.show_log(tail_err_log(job.job_id, lines=100))
-            elif action == "act-both":
-                stdout = tail_log(job.job_id, lines=60)
-                stderr = tail_err_log(job.job_id, lines=40)
-                combined = f"{'═'*40} STDOUT {'═'*40}\n{stdout}\n{'═'*40} STDERR {'═'*40}\n{stderr}"
-                panel.show_submenu(f"Job {job.job_id} — stdout + stderr", [("job-refresh", "Refresh")])
-                panel.show_log(combined)
-            # act-close: do nothing, modal dismissed
+            if action == "act-live-stdout":
+                self._focus_job(job.job_id, "stdout")
+            elif action == "act-live-stderr":
+                self._focus_job(job.job_id, "stderr")
+            elif action in ("act-stdout", "act-stderr", "act-both"):
+                panel = self.query_one(ActionPanel)
+                self.query_one("#main-menu").display = False
+                panel.display = True
+                self.current_view = "job-inspect"
+                if action == "act-stdout":
+                    panel.show_submenu(f"Job {job.job_id} — stdout", [("job-refresh", "Refresh")])
+                    panel.show_log(tail_log(job.job_id, lines=100))
+                elif action == "act-stderr":
+                    panel.show_submenu(f"Job {job.job_id} — stderr", [("job-refresh", "Refresh")])
+                    panel.show_log(tail_err_log(job.job_id, lines=100))
+                elif action == "act-both":
+                    stdout = tail_log(job.job_id, lines=60)
+                    stderr = tail_err_log(job.job_id, lines=40)
+                    combined = f"{'═'*40} STDOUT {'═'*40}\n{stdout}\n{'═'*40} STDERR {'═'*40}\n{stderr}"
+                    panel.show_submenu(f"Job {job.job_id} — stdout + stderr", [("job-refresh", "Refresh")])
+                    panel.show_log(combined)
 
         self.push_screen(JobActionsModal(job.job_id, job.name, job.state), on_action)
 
@@ -392,16 +398,50 @@ class HorizonApp(App):
 
         self.push_screen(JobFocusModal(job_id, job_name), on_dismiss)
 
-    def _focus_job(self, job_id: str) -> None:
-        """Switch to job log view for a specific job."""
+    def _focus_job(self, job_id: str, log_type: str = "stdout") -> None:
+        """Switch to live-tailing log view for a specific job."""
         panel = self.query_one(ActionPanel)
         self.query_one("#main-menu").display = False
         panel.display = True
-        self.current_view = "jobs"
-        panel.show_submenu(f"Job {job_id} — Live Log", [("job-refresh", "Refresh log")])
-        log_text = tail_log(job_id, lines=80)
-        panel.show_log(log_text)
+        self.current_view = "job-live"
+        panel.show_submenu(f"Job {job_id} — Live ({log_type})", [
+            ("live-stop", "Stop tailing"),
+            ("live-switch-stdout", "Switch to stdout"),
+            ("live-switch-stderr", "Switch to stderr"),
+        ])
         self._focused_job_id = job_id
+        self._focused_log_type = log_type
+        self._tail_last_size = 0
+        self._refresh_live_log()
+        # Start live tail timer (every 2s)
+        self._stop_live_tail()
+        self._live_tail_timer = self.set_interval(2, self._refresh_live_log)
+
+    def _refresh_live_log(self) -> None:
+        """Fetch latest log content and append new lines to the panel."""
+        job_id = getattr(self, "_focused_job_id", None)
+        if not job_id:
+            return
+        log_type = getattr(self, "_focused_log_type", "stdout")
+        if log_type == "stderr":
+            text = tail_err_log(job_id, lines=200)
+        else:
+            text = tail_log(job_id, lines=200)
+        # Only update if content changed
+        new_size = len(text)
+        if new_size != self._tail_last_size:
+            self._tail_last_size = new_size
+            panel = self.query_one(ActionPanel)
+            log_widget = panel.query_one("#panel-log", Log)
+            log_widget.display = True
+            log_widget.clear()
+            log_widget.write(text)
+
+    def _stop_live_tail(self) -> None:
+        timer = getattr(self, "_live_tail_timer", None)
+        if timer:
+            timer.stop()
+            self._live_tail_timer = None
 
     # ── Route selections from both menus ─────────────────────────────────────
 
@@ -535,11 +575,23 @@ class HorizonApp(App):
     def _handle_submenu(self, item_id: str) -> None:
         panel = self.query_one(ActionPanel)
 
-        # Refresh log for focused job
+        # Live tail controls
         if item_id == "job-refresh":
-            job_id = getattr(self, "_focused_job_id", None)
-            if job_id:
-                panel.show_log(tail_log(job_id, lines=80))
+            self._refresh_live_log()
+            return
+        if item_id == "live-stop":
+            self._stop_live_tail()
+            self.notify("Stopped tailing")
+            return
+        if item_id == "live-switch-stdout":
+            self._focused_log_type = "stdout"
+            self._tail_last_size = 0
+            self._refresh_live_log()
+            return
+        if item_id == "live-switch-stderr":
+            self._focused_log_type = "stderr"
+            self._tail_last_size = 0
+            self._refresh_live_log()
             return
 
         # Train
