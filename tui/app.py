@@ -259,9 +259,13 @@ class ActionPanel(Vertical):
     #sub-menu {
         height: auto;
         max-height: 8;
+        border-bottom: solid $accent;
+        margin-bottom: 1;
     }
     #panel-log {
         height: 1fr;
+        border: solid $surface-lighten-2;
+        padding: 0 1;
     }
     """
 
