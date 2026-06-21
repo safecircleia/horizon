@@ -1,5 +1,7 @@
 """Horizon TUI — manage training, jobs, evaluation, and deployment."""
 
+from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
