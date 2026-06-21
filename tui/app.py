@@ -123,8 +123,10 @@ class JobsSidebar(VerticalScroll):
     }
     """
 
+    jobs: list = []
+
     def compose(self) -> ComposeResult:
-        yield Label("SLURM Jobs", classes="title")
+        yield Label("SLURM Jobs (Enter to inspect)", classes="title")
         yield DataTable(id="jobs-table")
         yield Label("Cluster Nodes", classes="title")
         yield DataTable(id="nodes-table")
@@ -145,9 +147,15 @@ class JobsSidebar(VerticalScroll):
         table = self.query_one("#jobs-table", DataTable)
         table.clear()
         import os
-        jobs = squeue(user=os.environ.get("USER"))
-        for job in jobs:
+        self.jobs = squeue(user=os.environ.get("USER"))
+        for job in self.jobs:
             table.add_row(job.job_id, job.name[:14], job.state[:7], job.time)
+
+    def get_job_at_cursor(self):
+        table = self.query_one("#jobs-table", DataTable)
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(self.jobs):
+            return self.jobs[table.cursor_row]
+        return None
 
     def refresh_nodes(self) -> None:
         table = self.query_one("#nodes-table", DataTable)
@@ -346,10 +354,55 @@ class HorizonApp(App):
         self.query_one("#main-menu", ListView).focus()
         self.current_view = "menu"
 
-    # ── Recent jobs table interaction ────────────────────────────────────────
+    # ── Jobs table interaction (sidebar + bottom bar) ──────────────────────
+
+    def _handle_sidebar_job_selected(self, event: DataTable.RowSelected) -> None:
+        """When a running job in the sidebar is selected, open actions modal."""
+        sidebar = self.query_one(JobsSidebar)
+        job = sidebar.get_job_at_cursor()
+        if not job:
+            return
+
+        def on_action(action: str) -> None:
+            if action == "act-live-stdout":
+                self._focus_job(job.job_id, "stdout")
+            elif action == "act-live-stderr":
+                self._focus_job(job.job_id, "stderr")
+            elif action == "act-stdout":
+                panel = self.query_one(ActionPanel)
+                self.query_one("#main-menu").display = False
+                panel.display = True
+                self.current_view = "job-inspect"
+                panel.show_submenu(f"Job {job.job_id} — stdout", [("job-refresh", "Refresh")])
+                panel.show_log(tail_log(job.job_id, lines=100))
+            elif action == "act-stderr":
+                panel = self.query_one(ActionPanel)
+                self.query_one("#main-menu").display = False
+                panel.display = True
+                self.current_view = "job-inspect"
+                panel.show_submenu(f"Job {job.job_id} — stderr", [("job-refresh", "Refresh")])
+                panel.show_log(tail_err_log(job.job_id, lines=100))
+            elif action == "act-both":
+                panel = self.query_one(ActionPanel)
+                self.query_one("#main-menu").display = False
+                panel.display = True
+                self.current_view = "job-inspect"
+                stdout = tail_log(job.job_id, lines=60)
+                stderr = tail_err_log(job.job_id, lines=40)
+                combined = f"{'═'*40} STDOUT {'═'*40}\n{stdout}\n{'═'*40} STDERR {'═'*40}\n{stderr}"
+                panel.show_submenu(f"Job {job.job_id} — stdout + stderr", [("job-refresh", "Refresh")])
+                panel.show_log(combined)
+
+        self.push_screen(
+            JobActionsModal(job.job_id, job.name, job.state),
+            on_action,
+        )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """When a row in the recent jobs table is selected, open actions modal."""
+        """Handle row selection in both the sidebar jobs table and recent jobs table."""
+        if event.data_table.id == "jobs-table":
+            self._handle_sidebar_job_selected(event)
+            return
         if event.data_table.id != "recent-table":
             return
         recent_bar = self.query_one(RecentJobsBar)
