@@ -22,8 +22,17 @@
 set -euo pipefail
 
 MODEL_SIZE="${MODEL_SIZE:-e2b}"
-MODEL_DIR="models/horizon-edge-${MODEL_SIZE}-merged"
-OUTPUT_DIR="models/horizon-edge-${MODEL_SIZE}-litert"
+# Map size code to directory names (merge uses "2b"/"4b", not "e2b"/"e4b")
+if [ "$MODEL_SIZE" = "e2b" ]; then
+    MODEL_DIR="models/horizon-edge-2b-merged"
+    OUTPUT_DIR="models/horizon-edge-2b-litert"
+elif [ "$MODEL_SIZE" = "e4b" ]; then
+    MODEL_DIR="models/horizon-edge-4b-merged"
+    OUTPUT_DIR="models/horizon-edge-4b-litert"
+else
+    MODEL_DIR="models/horizon-edge-${MODEL_SIZE}-merged"
+    OUTPUT_DIR="models/horizon-edge-${MODEL_SIZE}-litert"
+fi
 
 if [ -z "${MODEL_SIZE:-}" ]; then
     echo "Error: MODEL_SIZE is required (e2b or e4b)."
