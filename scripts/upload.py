@@ -32,7 +32,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
 from huggingface_hub import HfApi, create_repo
+
+load_dotenv()
 
 # ── Model registry ───────────────────────────────────────────────────────────
 
