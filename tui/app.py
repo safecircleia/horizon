@@ -265,13 +265,18 @@ class ActionPanel(Vertical):
     def on_mount(self) -> None:
         self.query_one("#panel-log", Log).display = False
 
+    _submenu_counter: int = 0
+
     def show_submenu(self, title: str, items: list[tuple[str, str]]) -> None:
         """Show a navigable submenu. items: [(id, label), ...]"""
         self.query_one("#panel-title", Static).update(f"[b]{title}[/b]")
         lv = self.query_one("#sub-menu", ListView)
         lv.clear()
+        # Use a counter suffix to guarantee unique widget IDs across re-renders
+        ActionPanel._submenu_counter += 1
+        suffix = ActionPanel._submenu_counter
         for item_id, label in items:
-            lv.append(ListItem(Label(label), id=item_id))
+            lv.append(ListItem(Label(label), id=f"{item_id}--{suffix}"))
         lv.display = True
         lv.focus()
         self.query_one("#panel-log", Log).display = False
@@ -507,6 +512,10 @@ class HorizonApp(App):
             action = item_id.replace("menu-", "")
             self._open_action(action)
             return
+
+        # Strip the unique suffix added by show_submenu (e.g. "train-0--3" -> "train-0")
+        if "--" in item_id:
+            item_id = item_id.rsplit("--", 1)[0]
 
         # Submenu selection — dispatch based on current_view
         self._handle_submenu(item_id)
