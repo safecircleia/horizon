@@ -498,15 +498,36 @@ tags:
 - risk-detection
 - gemma
 - fine-tuned
+- litert-lm
+- on-device
+- mobile
 base_model: google/gemma-4-E2B-it
 pipeline_tag: text-generation
 ---
 
-# Horizon Edge 2B — SafeCircle Child Safety Risk Detection
+# Horizon Edge 2B — On-Device Child Safety Risk Detection
 
-**Horizon Edge 2B** is a fine-tuned [Gemma 4 E2B](https://huggingface.co/google/gemma-4-E2B) model that detects child safety risks in online conversations. It outputs the same structured JSON assessment as [Horizon Full](https://huggingface.co/safecircleai/horizon-full) — risk category, severity, confidence, and one-sentence reasoning — at roughly half the inference cost.
+**Horizon Edge 2B** is a fine-tuned [Gemma 4 E2B](https://huggingface.co/google/gemma-4-E2B-it) model packaged in [LiteRT-LM](https://developers.google.com/edge/litert-lm/overview) format for on-device child safety risk detection on Android, iOS, Desktop, IoT, and Web.
+
+It runs the same structured JSON risk assessment as [Horizon Full](https://huggingface.co/safecircleai/horizon-full) — directly on-device, with no cloud dependency.
 
 > ⚠️ **License:** [SafeCircle Research License (SRL-1.0)](https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md). Commercial use prohibited without written permission. Contact [legal@safecircle.tech](mailto:legal@safecircle.tech).
+
+---
+
+## Available Variants
+
+| File | Target | Optimized For |
+|---|---|---|
+| `horizon-edge-e2b.litertlm` | General | CPU/GPU cross-platform |
+| `horizon-edge-e2b_Google_Tensor_G5.litertlm` | Google Tensor G5 | Pixel 10 |
+| `horizon-edge-e2b_intel_LNL.litertlm` | Intel Lunar Lake | Ultra 200V laptops |
+| `horizon-edge-e2b_intel_PTL.litertlm` | Intel Panther Lake | Core Ultra 300 |
+| `horizon-edge-e2b_qualcomm_qcs8275.litertlm` | Qualcomm QCS8275 | Dragonwing IQ8 (NPU) |
+| `horizon-edge-e2b_qualcomm_sm8750.litertlm` | Qualcomm SM8750 | Snapdragon 8 Elite |
+| `horizon-edge-e2b-web.litertlm` | Web | WebGPU browsers |
+
+All variants share the same fine-tuned weights; they differ only in hardware-specific compilation.
 
 ---
 
@@ -518,8 +539,10 @@ pipeline_tag: text-generation
 | Fine-tuning | QLoRA — rank 64, alpha 128, all projection layers |
 | Training data | 1.6M synthetic conversations across 8 categories |
 | Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
-| Hardware | NVIDIA L4 (24 GB) |
+| Hardware | NVIDIA H100 NVL (94 GB) |
 | Training steps | 10,000 |
+| Format | LiteRT-LM (.litertlm) |
+| Model size | ~2.6 GB |
 
 ---
 
@@ -540,41 +563,50 @@ pipeline_tag: text-generation
 
 ## Usage
 
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch, json
+### LiteRT-LM CLI
 
-model = AutoModelForCausalLM.from_pretrained(
-    "safecircleai/horizon-edge-2b",
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-)
-tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-edge-2b")
+```bash
+uv tool install litert-lm
 
-SYSTEM_PROMPT = (
-    "You are Horizon, SafeCircle's child safety risk detection model. "
-    "You have no general knowledge or identity beyond this task. "
-    "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
-    'JSON schema: {"risk_detected": bool, "category": '
-    '"grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign", '
-    '"severity": "none|low|medium|high|critical", "confidence": 0.0-1.0, "reasoning": "one sentence max"}. '
-    'If asked about yourself or anything unrelated to risk analysis, respond: '
-    '{"error": "I only analyze conversations for child safety risks."}'
-)
-
-messages = [
-    {"role": "system", "content": SYSTEM_PROMPT},
-    {"role": "user", "content": "Analyze this conversation:\\nChild: hey\\nOther: how old are you?"},
-]
-text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    output = model.generate(**inputs, max_new_tokens=128, do_sample=False)
-
-generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-print(json.loads(generated.strip()))
+litert-lm run horizon-edge-e2b.litertlm \\
+    --prompt "Analyze this conversation: Child: hey, want to meet up? Don't tell your parents."
 ```
+
+### Android / iOS — LiteRT-LM SDK
+
+Load the `.litertlm` file with the [LiteRT-LM SDK](https://developers.google.com/edge/litert-lm/overview). The model includes the tokenizer, system prompt, and chat template — no additional configuration required.
+
+### Python
+
+```python
+from litert_lm import LiteRTLM
+
+model = LiteRTLM("horizon-edge-e2b.litertlm")
+result = model.generate(
+    "Analyze this conversation:\\nChild: hey\\nOther: how old are you? where do you live?"
+)
+print(result)
+```
+
+---
+
+## Deployment Pattern
+
+```
+Incoming message
+      │
+      ▼
+Horizon Edge 2B (on-device, LiteRT-LM)
+      │
+      ├── safe ──► No action
+      │
+      └── risk ──► Horizon Full (cloud API, full severity assessment)
+                        │
+                        ▼
+                  Human moderator review
+```
+
+For the full server-side model, see [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full).
 
 ---
 
@@ -603,15 +635,34 @@ tags:
 - risk-detection
 - gemma
 - fine-tuned
+- litert-lm
+- on-device
+- mobile
 base_model: google/gemma-4-E4B-it
 pipeline_tag: text-generation
 ---
 
-# Horizon Edge 4B — SafeCircle Child Safety Risk Detection
+# Horizon Edge 4B — On-Device Child Safety Risk Detection
 
-**Horizon Edge 4B** is a fine-tuned [Gemma 4 E4B](https://huggingface.co/google/gemma-4-E4B) model for child safety risk detection. It delivers higher accuracy than [Horizon Edge 2B](https://huggingface.co/safecircleai/horizon-edge-2b) at a moderate size increase, making it the recommended edge choice where GPU memory allows.
+**Horizon Edge 4B** is a fine-tuned [Gemma 4 E4B](https://huggingface.co/google/gemma-4-E4B-it) model packaged in [LiteRT-LM](https://developers.google.com/edge/litert-lm/overview) format. It delivers higher accuracy than [Horizon Edge 2B](https://huggingface.co/safecircleai/horizon-edge-2b) at a moderate size increase (~3.7 GB), making it the recommended edge choice for devices with 6 GB+ RAM.
 
 > ⚠️ **License:** [SafeCircle Research License (SRL-1.0)](https://huggingface.co/safecircleai/horizon-full/blob/main/LICENSE-SAFECIRCLE.md). Commercial use prohibited without written permission. Contact [legal@safecircle.tech](mailto:legal@safecircle.tech).
+
+---
+
+## Available Variants
+
+| File | Target | Optimized For |
+|---|---|---|
+| `horizon-edge-e4b.litertlm` | General | CPU/GPU cross-platform |
+| `horizon-edge-e4b_Google_Tensor_G5.litertlm` | Google Tensor G5 | Pixel 10 |
+| `horizon-edge-e4b_intel_LNL.litertlm` | Intel Lunar Lake | Ultra 200V laptops |
+| `horizon-edge-e4b_intel_PTL.litertlm` | Intel Panther Lake | Core Ultra 300 |
+| `horizon-edge-e4b_qualcomm_qcs8275.litertlm` | Qualcomm QCS8275 | Dragonwing IQ8 (NPU) |
+| `horizon-edge-e4b_qualcomm_sm8750.litertlm` | Qualcomm SM8750 | Snapdragon 8 Elite |
+| `horizon-edge-e4b-web.litertlm` | Web | WebGPU browsers |
+
+All variants share the same fine-tuned weights; they differ only in hardware-specific compilation.
 
 ---
 
@@ -623,8 +674,10 @@ pipeline_tag: text-generation
 | Fine-tuning | QLoRA — rank 128, alpha 256, all projection layers |
 | Training data | 1.6M synthetic conversations across 8 categories |
 | Dataset | [safecircleai/horizon-training-data](https://huggingface.co/datasets/safecircleai/horizon-training-data) |
-| Hardware | NVIDIA H100 80GB |
+| Hardware | NVIDIA H100 NVL (94 GB) |
 | Training steps | 15,000 |
+| Format | LiteRT-LM (.litertlm) |
+| Model size | ~3.7 GB |
 
 ---
 
@@ -645,41 +698,51 @@ pipeline_tag: text-generation
 
 ## Usage
 
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch, json
+### LiteRT-LM CLI
 
-model = AutoModelForCausalLM.from_pretrained(
-    "safecircleai/horizon-edge-4b",
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-)
-tokenizer = AutoTokenizer.from_pretrained("safecircleai/horizon-edge-4b")
+```bash
+uv tool install litert-lm
 
-SYSTEM_PROMPT = (
-    "You are Horizon, SafeCircle's child safety risk detection model. "
-    "You have no general knowledge or identity beyond this task. "
-    "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
-    'JSON schema: {"risk_detected": bool, "category": '
-    '"grooming|bullying|sexual_content|isolation|personal_info|platform_migration|threats|benign", '
-    '"severity": "none|low|medium|high|critical", "confidence": 0.0-1.0, "reasoning": "one sentence max"}. '
-    'If asked about yourself or anything unrelated to risk analysis, respond: '
-    '{"error": "I only analyze conversations for child safety risks."}'
-)
-
-messages = [
-    {"role": "system", "content": SYSTEM_PROMPT},
-    {"role": "user", "content": "Analyze this conversation:\\nChild: hey\\nOther: how old are you?"},
-]
-text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-inputs = tokenizer(text, return_tensors="pt").to(model.device)
-
-with torch.no_grad():
-    output = model.generate(**inputs, max_new_tokens=128, do_sample=False)
-
-generated = tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-print(json.loads(generated.strip()))
+litert-lm run horizon-edge-e4b.litertlm \\
+    --prompt "Analyze this conversation: Child: hey, want to meet up? Don't tell your parents."
 ```
+
+### Android / iOS — LiteRT-LM SDK
+
+Load the `.litertlm` file with the [LiteRT-LM SDK](https://developers.google.com/edge/litert-lm/overview). The model includes the tokenizer, system prompt, and chat template — no additional configuration required.
+
+### Python
+
+```python
+from litert_lm import LiteRTLM
+
+model = LiteRTLM("horizon-edge-e4b.litertlm")
+result = model.generate(
+    "Analyze this conversation:\\nChild: hey\\nOther: how old are you? where do you live?"
+)
+print(result)
+```
+
+---
+
+## Deployment Pattern
+
+```
+Incoming message
+      │
+      ▼
+Horizon Edge 4B (on-device, LiteRT-LM)
+      │
+      ├── safe ──► No action
+      │
+      └── risk ──► Horizon Full (cloud API, full severity assessment)
+                        │
+                        ▼
+                  Human moderator review
+```
+
+For the full server-side model, see [safecircleai/horizon-full](https://huggingface.co/safecircleai/horizon-full).
+For the smaller 2B variant, see [safecircleai/horizon-edge-2b](https://huggingface.co/safecircleai/horizon-edge-2b).
 
 ---
 
@@ -832,6 +895,7 @@ def upload_mobile_model(api: HfApi, mobile_standard_dir: str, mobile_lite_dir: s
 
 
 def upload_edge_model(api: HfApi, repo: str, card: str, model_dir: str, label: str):
+    """Upload .litertlm variants for an edge model."""
     print(f"\n==> Uploading {label} to {repo}")
     ensure_repo(api, repo)
 
@@ -841,13 +905,25 @@ def upload_edge_model(api: HfApi, repo: str, card: str, model_dir: str, label: s
         repo_id=repo,
         commit_message="Add model card",
     )
-    print("  Uploading model files...")
-    api.upload_folder(
-        folder_path=model_dir,
-        repo_id=repo,
-        commit_message=f"Upload {label}",
-        ignore_patterns=["*.py", "*.sh"],
-    )
+
+    model_path = Path(model_dir)
+    litertlm_files = sorted(model_path.glob("*.litertlm"))
+    if not litertlm_files:
+        print(f"  WARNING: no .litertlm files found in {model_dir}")
+        print(f"  Run first: sbatch --export=MODEL_SIZE=... slurm/export_edge.sbatch")
+        return
+
+    for f in litertlm_files:
+        size_mb = f.stat().st_size / 1e6
+        print(f"  Uploading {f.name} ({size_mb:.0f} MB)...")
+        api.upload_file(
+            path_or_fileobj=str(f),
+            path_in_repo=f.name,
+            repo_id=repo,
+            commit_message=f"Upload {f.name}",
+        )
+
+    print(f"  Uploaded {len(litertlm_files)} variants.")
     print(f"  Done: https://huggingface.co/{repo}")
 
 
@@ -858,8 +934,8 @@ def main():
     parser.add_argument("--gguf-dir", default="models/horizon-full-gguf")
     parser.add_argument("--mobile-standard-dir", default="models/mobile-standard")
     parser.add_argument("--mobile-lite-dir", default="models/mobile-lite")
-    parser.add_argument("--edge-2b-dir", default="models/horizon-edge-2b-merged")
-    parser.add_argument("--edge-4b-dir", default="models/horizon-edge-4b-merged")
+    parser.add_argument("--edge-2b-dir", default="models/horizon-edge-2b-litert")
+    parser.add_argument("--edge-4b-dir", default="models/horizon-edge-4b-litert")
     args = parser.parse_args()
 
     api = HfApi()
@@ -890,15 +966,15 @@ def main():
 
     if args.what in ("edge-2b", "all"):
         if not Path(args.edge_2b_dir).exists():
-            print(f"Edge 2B model not found at {args.edge_2b_dir}")
-            print("Run first: python scripts/merge_lora.py --checkpoint experiments/edge-2b-<ts>/final --output models/horizon-edge-2b-merged")
+            print(f"Edge 2B LiteRT-LM models not found at {args.edge_2b_dir}")
+            print("Run first: sbatch --export=MODEL_SIZE=e2b slurm/export_edge.sbatch")
         else:
             upload_edge_model(api, EDGE_2B_REPO, EDGE_2B_MODEL_CARD, args.edge_2b_dir, "Horizon Edge 2B")
 
     if args.what in ("edge-4b", "all"):
         if not Path(args.edge_4b_dir).exists():
-            print(f"Edge 4B model not found at {args.edge_4b_dir}")
-            print("Run first: python scripts/merge_lora.py --checkpoint experiments/edge-4b-<ts>/final --output models/horizon-edge-4b-merged")
+            print(f"Edge 4B LiteRT-LM models not found at {args.edge_4b_dir}")
+            print("Run first: sbatch --export=MODEL_SIZE=e4b slurm/export_edge.sbatch")
         else:
             upload_edge_model(api, EDGE_4B_REPO, EDGE_4B_MODEL_CARD, args.edge_4b_dir, "Horizon Edge 4B")
 
