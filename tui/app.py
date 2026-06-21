@@ -328,15 +328,15 @@ class HorizonApp(App):
 
     def on_mount(self) -> None:
         self.query_one("#action-panel").display = False
-        self.set_interval(15, self._auto_refresh)
+        self.set_interval(5, self._auto_refresh)
 
     def _auto_refresh(self) -> None:
         self.query_one(JobsSidebar).refresh_jobs()
+        self.query_one(JobsSidebar).refresh_nodes()
         self.query_one(RecentJobsBar).refresh_recent()
 
     def action_refresh_jobs(self) -> None:
-        self.query_one(JobsSidebar).refresh_jobs()
-        self.query_one(RecentJobsBar).refresh_recent()
+        self._auto_refresh()
         self.notify("Refreshed")
 
     def action_back(self) -> None:
