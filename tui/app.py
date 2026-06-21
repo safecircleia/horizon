@@ -19,7 +19,7 @@ from textual.widgets import (
     Static,
 )
 
-from .slurm import squeue, scancel, tail_log
+from .slurm import squeue, scancel, tail_log, sinfo, format_node_gpu, format_node_memory
 from . import actions
 
 
@@ -68,10 +68,10 @@ class JobFocusModal(ModalScreen[bool]):
 
 # ── Sidebar: running jobs ────────────────────────────────────────────────────
 
-class JobsSidebar(Vertical):
+class JobsSidebar(VerticalScroll):
     DEFAULT_CSS = """
     JobsSidebar {
-        width: 38;
+        width: 42;
         border-left: solid $accent;
         padding: 0 1;
     }
@@ -84,12 +84,20 @@ class JobsSidebar(Vertical):
     def compose(self) -> ComposeResult:
         yield Label("SLURM Jobs", classes="title")
         yield DataTable(id="jobs-table")
+        yield Label("Cluster Nodes", classes="title")
+        yield DataTable(id="nodes-table")
 
     def on_mount(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
         table.add_columns("ID", "Name", "State", "Time")
         table.cursor_type = "row"
+
+        nodes_table = self.query_one("#nodes-table", DataTable)
+        nodes_table.add_columns("Node", "GPU", "Mem", "State")
+        nodes_table.cursor_type = "row"
+
         self.refresh_jobs()
+        self.refresh_nodes()
 
     def refresh_jobs(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
@@ -98,6 +106,18 @@ class JobsSidebar(Vertical):
         jobs = squeue(user=os.environ.get("USER"))
         for job in jobs:
             table.add_row(job.job_id, job.name[:14], job.state[:7], job.time)
+
+    def refresh_nodes(self) -> None:
+        table = self.query_one("#nodes-table", DataTable)
+        table.clear()
+        nodes = sinfo()
+        for node in nodes:
+            table.add_row(
+                node.name.replace("slurm-", ""),
+                format_node_gpu(node.gres),
+                format_node_memory(node.memory),
+                node.state[:7],
+            )
 
 
 # ── Main menu items ──────────────────────────────────────────────────────────
