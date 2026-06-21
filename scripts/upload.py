@@ -68,7 +68,6 @@ MODELS = {
         "patterns": ["*.litertlm"],
     },
 }
-}
 
 
 def collect_files(model_key: str) -> list[Path]:
