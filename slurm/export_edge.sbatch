@@ -77,47 +77,34 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="
-# ponytail: nightly has working Gemma4 cache but is missing the experimental subpackage;
-# stable has experimental but broken Gemma4 cache. Install nightly then graft in experimental from stable.
 uv pip install --quiet litert-torch-nightly litert-lm-builder
-LITERT_SITE=$(python3 -c "import litert_torch; import os; print(os.path.dirname(litert_torch.__file__))")
-EXPERIMENTAL_DIR="$LITERT_SITE/generative/export_hf/experimental"
-if [ ! -d "$EXPERIMENTAL_DIR" ]; then
-    echo "=== Grafting experimental subpackage from stable litert-torch ==="
-    TMPDIR_LITERT=$(mktemp -d)
-    set +e
-    uv pip download --no-deps --dest "$TMPDIR_LITERT" litert-torch
-    DOWNLOAD_EXIT=$?
-    set -e
-    if [ $DOWNLOAD_EXIT -ne 0 ]; then
-        echo "ERROR: failed to download stable litert-torch wheel (exit $DOWNLOAD_EXIT)"
-        exit 1
-    fi
-    WHEEL=$(ls "$TMPDIR_LITERT"/litert_torch-*.whl 2>/dev/null | head -1)
-    if [ -z "$WHEEL" ]; then
-        echo "ERROR: no litert_torch wheel found in $TMPDIR_LITERT"
-        ls "$TMPDIR_LITERT"
-        exit 1
-    fi
-    python3 -c "
-import zipfile, shutil, os, sys
-with zipfile.ZipFile('$WHEEL') as z:
-    members = [m for m in z.namelist() if 'export_hf/experimental' in m]
-    if not members:
-        print('ERROR: experimental not found in stable wheel contents:')
-        print([m for m in z.namelist() if 'export_hf' in m][:20])
-        sys.exit(1)
-    z.extractall('$TMPDIR_LITERT', members)
-src = '$TMPDIR_LITERT/litert_torch/generative/export_hf/experimental'
-if os.path.isdir(src):
-    shutil.copytree(src, '$EXPERIMENTAL_DIR')
-    print('experimental subpackage grafted OK')
-else:
-    print('ERROR: extracted but src dir missing:', src)
-    sys.exit(1)
-"
-    rm -rf "$TMPDIR_LITERT"
-fi
+
+# ponytail: nightly wheel ships litert_lm_builder.py with a hard import of
+# litert_torch.generative.export_hf.experimental.minijinja_transpile but the
+# subpackage is absent from the wheel. Synthesise a minimal shim so the import
+# resolves; the real transpile path is not exercised during export_hf export.
+python3 - <<'PYEOF'
+import importlib, pathlib, sys
+
+try:
+    import litert_torch.generative.export_hf.experimental
+    print("experimental subpackage already present, skipping shim")
+    sys.exit(0)
+except ModuleNotFoundError:
+    pass
+
+import litert_torch.generative.export_hf as _pkg
+pkg_dir = pathlib.Path(_pkg.__file__).parent
+exp_dir = pkg_dir / "experimental"
+exp_dir.mkdir(exist_ok=True)
+(exp_dir / "__init__.py").write_text("")
+(exp_dir / "minijinja_transpile.py").write_text(
+    "# shim — real minijinja transpile not needed for export_hf\n"
+    "def transpile(*args, **kwargs):\n"
+    "    raise NotImplementedError('minijinja_transpile shim — should not be called during export_hf')\n"
+)
+print(f"experimental shim written to {exp_dir}")
+PYEOF
 
 cd "$JOBSCRATCH"
 
