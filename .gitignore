@@ -64,6 +64,7 @@ dmypy.json
 data/raw/*.jsonl
 data/processed/*.jsonl
 data/evaluation/*.jsonl
+evaluation/reports/
 *.parquet
 *.arrow
 
