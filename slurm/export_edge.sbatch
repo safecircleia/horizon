@@ -79,31 +79,41 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch-nightly litert-lm-builder
 
-# ponytail: nightly wheel ships litert_lm_builder.py with a hard import of
-# litert_torch.generative.export_hf.experimental.minijinja_transpile but the
-# subpackage is absent from the wheel. Synthesise a minimal shim so the import
-# resolves; the real transpile path is not exercised during export_hf export.
+# ponytail: nightly has two bugs — missing experimental subpackage and
+# LiteRTLMCacheLayer missing get_max_length (abstract in base, not implemented
+# in subclass). Patch both directly in the installed package.
 python3 - <<'PYEOF'
-import importlib, pathlib, sys
-
-try:
-    import litert_torch.generative.export_hf.experimental
-    print("experimental subpackage already present, skipping shim")
-    sys.exit(0)
-except ModuleNotFoundError:
-    pass
+import pathlib, sys
 
 import litert_torch.generative.export_hf as _pkg
 pkg_dir = pathlib.Path(_pkg.__file__).parent
+
+# Fix 1: missing experimental subpackage
 exp_dir = pkg_dir / "experimental"
 exp_dir.mkdir(exist_ok=True)
 (exp_dir / "__init__.py").write_text("")
 (exp_dir / "minijinja_transpile.py").write_text(
-    "# shim — real minijinja transpile not needed for export_hf\n"
-    "def transpile(*args, **kwargs):\n"
-    "    raise NotImplementedError('minijinja_transpile shim — should not be called during export_hf')\n"
+    "# shim\ndef transpile(*args, **kwargs):\n"
+    "    raise NotImplementedError('minijinja_transpile shim')\n"
 )
-print(f"experimental shim written to {exp_dir}")
+print(f"Fix 1: experimental shim written to {exp_dir}")
+
+# Fix 2: LiteRTLMCacheLayer missing get_max_length implementation
+cache_py = pkg_dir / "core" / "cache.py"
+src = cache_py.read_text()
+marker = "    self.max_cache_len = self.v_cache_shape[self.v_ts_idx]"
+patch = "\n\n  def get_max_length(self):\n    return self.max_cache_len"
+if "def get_max_length" not in src:
+    # Insert after the class body's last __init__ assignment by appending before create_from_config
+    insert_after = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
+    if insert_after in src:
+        src = src.replace(insert_after, insert_after + patch, 1)
+        cache_py.write_text(src)
+        print("Fix 2: get_max_length patched into LiteRTLMCacheLayer")
+    else:
+        print("WARNING: Fix 2 marker not found — cache.py may have changed")
+else:
+    print("Fix 2: get_max_length already present, skipping")
 PYEOF
 
 cd "$JOBSCRATCH"
