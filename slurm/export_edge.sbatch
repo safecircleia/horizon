@@ -85,24 +85,37 @@ EXPERIMENTAL_DIR="$LITERT_SITE/generative/export_hf/experimental"
 if [ ! -d "$EXPERIMENTAL_DIR" ]; then
     echo "=== Grafting experimental subpackage from stable litert-torch ==="
     TMPDIR_LITERT=$(mktemp -d)
-    uv pip download --quiet --no-deps --dest "$TMPDIR_LITERT" litert-torch
+    set +e
+    uv pip download --no-deps --dest "$TMPDIR_LITERT" litert-torch
+    DOWNLOAD_EXIT=$?
+    set -e
+    if [ $DOWNLOAD_EXIT -ne 0 ]; then
+        echo "ERROR: failed to download stable litert-torch wheel (exit $DOWNLOAD_EXIT)"
+        exit 1
+    fi
     WHEEL=$(ls "$TMPDIR_LITERT"/litert_torch-*.whl 2>/dev/null | head -1)
-    if [ -n "$WHEEL" ]; then
-        python3 -c "
-import zipfile, shutil, os
+    if [ -z "$WHEEL" ]; then
+        echo "ERROR: no litert_torch wheel found in $TMPDIR_LITERT"
+        ls "$TMPDIR_LITERT"
+        exit 1
+    fi
+    python3 -c "
+import zipfile, shutil, os, sys
 with zipfile.ZipFile('$WHEEL') as z:
     members = [m for m in z.namelist() if 'export_hf/experimental' in m]
+    if not members:
+        print('ERROR: experimental not found in stable wheel contents:')
+        print([m for m in z.namelist() if 'export_hf' in m][:20])
+        sys.exit(1)
     z.extractall('$TMPDIR_LITERT', members)
 src = '$TMPDIR_LITERT/litert_torch/generative/export_hf/experimental'
 if os.path.isdir(src):
     shutil.copytree(src, '$EXPERIMENTAL_DIR')
     print('experimental subpackage grafted OK')
 else:
-    print('WARNING: experimental not found in stable wheel')
+    print('ERROR: extracted but src dir missing:', src)
+    sys.exit(1)
 "
-    else
-        echo "WARNING: could not download stable litert-torch wheel"
-    fi
     rm -rf "$TMPDIR_LITERT"
 fi
 
