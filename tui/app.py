@@ -234,6 +234,7 @@ MENU_ITEMS = [
     ("merge", "Merge LoRA Adapter"),
     ("export", "Export to LiteRT-LM"),
     ("evaluate", "Run Evaluation"),
+    ("benchmark", "Run Benchmark"),
     ("test", "Test LiteRT-LM Model"),
     ("upload", "Upload Models (HF + R2)"),
     ("jobs", "View SLURM Jobs"),
@@ -546,6 +547,8 @@ class HorizonApp(App):
             self._show_export(panel)
         elif action == "evaluate":
             self._show_evaluate(panel)
+        elif action == "benchmark":
+            self._show_benchmark(panel)
         elif action == "test":
             self._show_test(panel)
         elif action == "upload":
@@ -590,6 +593,16 @@ class HorizonApp(App):
         items = [(f"eval-{i}", f"{e['name']} ({e['size']})") for i, e in enumerate(finals)]
         panel.show_submenu("Run Evaluation", items)
         self._eval_candidates = finals
+
+    def _show_benchmark(self, panel: ActionPanel) -> None:
+        experiments = actions.list_experiments()
+        finals = [e for e in experiments if (Path(e["path"]) / "final").exists()]
+        if not finals:
+            panel.show_message("Benchmark", "No experiments with /final checkpoint found.")
+            return
+        items = [(f"benchmark-{i}", f"{e['name']} ({e['size']})") for i, e in enumerate(finals)]
+        panel.show_submenu("Run Benchmark", items)
+        self._benchmark_candidates = finals
 
     def _show_test(self, panel: ActionPanel) -> None:
         # Find .litertlm files in models/
@@ -713,6 +726,15 @@ class HorizonApp(App):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
                 ok, msg = actions.submit_evaluate(checkpoint)
                 self._submit_and_offer_focus(ok, msg, f"eval {candidates[idx]['name']}")
+
+        # Benchmark
+        elif item_id.startswith("benchmark-"):
+            idx = int(item_id.split("-", 1)[1])
+            candidates = getattr(self, "_benchmark_candidates", [])
+            if 0 <= idx < len(candidates):
+                checkpoint = f"experiments/{candidates[idx]['name']}/final"
+                ok, msg = actions.submit_benchmark(checkpoint)
+                self._submit_and_offer_focus(ok, msg, f"benchmark {candidates[idx]['name']}")
 
         # Test LiteRT-LM
         elif item_id == "test-default":

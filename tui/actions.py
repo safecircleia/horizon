@@ -62,6 +62,13 @@ def submit_evaluate(checkpoint: str) -> tuple[bool, str]:
     )
 
 
+def submit_benchmark(checkpoint: str) -> tuple[bool, str]:
+    return sbatch(
+        str(PROJECT_ROOT / "slurm/benchmark.sbatch"),
+        export_vars={"CHECKPOINT": checkpoint},
+    )
+
+
 # ── Test LiteRT-LM ──────────────────────────────────────────────────────────
 
 def submit_test_litert(model_path: str = None) -> tuple[bool, str]:
