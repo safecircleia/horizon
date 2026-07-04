@@ -98,22 +98,26 @@ exp_dir.mkdir(exist_ok=True)
 )
 print(f"Fix 1: experimental shim written to {exp_dir}")
 
-# Fix 2: LiteRTLMCacheLayer missing get_max_length implementation
+# Fix 2: LiteRTLMCacheLayer missing get_max_length + cumulative_length
 cache_py = pkg_dir / "core" / "cache.py"
 src = cache_py.read_text()
-marker = "    self.max_cache_len = self.v_cache_shape[self.v_ts_idx]"
-patch = "\n\n  def get_max_length(self):\n    return self.max_cache_len"
+insert_after = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
+patch = ""
 if "def get_max_length" not in src:
-    # Insert after the class body's last __init__ assignment by appending before create_from_config
-    insert_after = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
-    if insert_after in src:
-        src = src.replace(insert_after, insert_after + patch, 1)
-        cache_py.write_text(src)
-        print("Fix 2: get_max_length patched into LiteRTLMCacheLayer")
-    else:
-        print("WARNING: Fix 2 marker not found — cache.py may have changed")
+    patch += "\n\n  def get_max_length(self):\n    return self.max_cache_len"
+# Check if cumulative_length is missing from LiteRTLMCacheLayer.__init__ specifically
+import re
+cls_init = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
+if cls_init and "cumulative_length" not in cls_init.group():
+    patch += "\n    self.cumulative_length = 0"
+if patch and insert_after in src:
+    src = src.replace(insert_after, insert_after + patch, 1)
+    cache_py.write_text(src)
+    print(f"Fix 2: patched cache.py ({patch.strip()!r})")
+elif not patch:
+    print("Fix 2: already complete, skipping")
 else:
-    print("Fix 2: get_max_length already present, skipping")
+    print("WARNING: Fix 2 marker not found — cache.py may have changed")
 PYEOF
 
 cd "$JOBSCRATCH"
