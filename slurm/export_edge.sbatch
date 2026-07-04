@@ -77,7 +77,34 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="
-uv pip install --quiet litert-torch litert-lm-builder
+# ponytail: nightly has working Gemma4 cache but is missing the experimental subpackage;
+# stable has experimental but broken Gemma4 cache. Install nightly then graft in experimental from stable.
+uv pip install --quiet litert-torch-nightly litert-lm-builder
+LITERT_SITE=$(python3 -c "import litert_torch; import os; print(os.path.dirname(litert_torch.__file__))")
+EXPERIMENTAL_DIR="$LITERT_SITE/generative/export_hf/experimental"
+if [ ! -d "$EXPERIMENTAL_DIR" ]; then
+    echo "=== Grafting experimental subpackage from stable litert-torch ==="
+    TMPDIR_LITERT=$(mktemp -d)
+    uv pip download --quiet --no-deps --dest "$TMPDIR_LITERT" litert-torch
+    WHEEL=$(ls "$TMPDIR_LITERT"/litert_torch-*.whl 2>/dev/null | head -1)
+    if [ -n "$WHEEL" ]; then
+        python3 -c "
+import zipfile, shutil, os
+with zipfile.ZipFile('$WHEEL') as z:
+    members = [m for m in z.namelist() if 'export_hf/experimental' in m]
+    z.extractall('$TMPDIR_LITERT', members)
+src = '$TMPDIR_LITERT/litert_torch/generative/export_hf/experimental'
+if os.path.isdir(src):
+    shutil.copytree(src, '$EXPERIMENTAL_DIR')
+    print('experimental subpackage grafted OK')
+else:
+    print('WARNING: experimental not found in stable wheel')
+"
+    else
+        echo "WARNING: could not download stable litert-torch wheel"
+    fi
+    rm -rf "$TMPDIR_LITERT"
+fi
 
 cd "$JOBSCRATCH"
 
