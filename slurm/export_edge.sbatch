@@ -79,35 +79,28 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch==0.9.1
 
-# Patch upstream bug: LiteRTLMCacheLayerForGemma4 is missing get_max_length
-# (declared abstract by transformers CacheLayerMixin). Inject it before export.
+# Patch upstream bug: LiteRTLMCacheLayer is missing get_max_length
+# (declared abstract by transformers CacheLayerMixin). Add it to the base
+# class so all subclasses (including LiteRTLMCacheLayerForGemma4) inherit it.
 python3 - <<'PYEOF'
-import site, pathlib, textwrap
-for sp in site.getsitepackages():
-    p = pathlib.Path(sp) / "litert_torch/generative/export_hf/model_ext/gemma4/cache.py"
-    if p.exists():
-        src = p.read_text()
-        method = textwrap.dedent("""
-    def get_max_length(self) -> int:
-        return self.max_cache_len
-""")
-        if "get_max_length" not in src:
-            # insert before first def in the class body
-            idx = src.find("\n    def ", src.find("class LiteRTLMCacheLayerForGemma4"))
-            src = src[:idx] + method + src[idx:]
-            p.write_text(src)
-            # remove stale bytecode
-            pyc = p.with_suffix(".pyc")
-            if pyc.exists():
-                pyc.unlink()
-            for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
-                c.unlink()
-            print(f"Patched {p}")
-        else:
-            print("Patch not needed")
-        break
-else:
-    print("WARNING: gemma4/cache.py not found — patch skipped")
+import sys, pathlib
+sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+p = sp / "litert_torch/generative/export_hf/core/cache.py"
+if not p.exists():
+    print(f"WARNING: {p} not found — patch skipped"); sys.exit(0)
+src = p.read_text()
+if "get_max_length" in src:
+    print("Patch not needed"); sys.exit(0)
+# Insert get_max_length right after get_max_cache_shape in LiteRTLMCacheLayer
+needle = "    def get_max_cache_shape(self) -> int:\n        return self.max_cache_len\n"
+replacement = needle + "\n    def get_max_length(self) -> int:\n        return self.max_cache_len\n"
+if needle not in src:
+    print(f"WARNING: anchor not found in {p} — patch skipped"); sys.exit(0)
+src = src.replace(needle, replacement, 1)
+p.write_text(src)
+for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
+    c.unlink()
+print(f"Patched {p}")
 PYEOF
 
 cd "$JOBSCRATCH"
