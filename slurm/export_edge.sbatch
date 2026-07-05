@@ -77,60 +77,7 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="
-uv pip install --quiet litert-torch-nightly litert-lm-builder
-
-# ponytail: nightly has two bugs — missing experimental subpackage and
-# LiteRTLMCacheLayer missing get_max_length (abstract in base, not implemented
-# in subclass). Patch both directly in the installed package.
-python3 - <<'PYEOF'
-import pathlib, sys
-
-import litert_torch.generative.export_hf as _pkg
-pkg_dir = pathlib.Path(_pkg.__file__).parent
-
-# Fix 1: missing experimental subpackage
-exp_dir = pkg_dir / "experimental"
-exp_dir.mkdir(exist_ok=True)
-(exp_dir / "__init__.py").write_text("")
-(exp_dir / "minijinja_transpile.py").write_text(
-    "# shim\ndef transpile(*args, **kwargs):\n"
-    "    raise NotImplementedError('minijinja_transpile shim')\n"
-)
-print(f"Fix 1: experimental shim written to {exp_dir}")
-
-# Fix 2: LiteRTLMCacheLayer missing get_max_length + cumulative_length
-import re
-cache_py = pkg_dir / "core" / "cache.py"
-src = cache_py.read_text()
-changed = False
-
-# 2a: inject cumulative_length=0 into __init__ (separate from get_max_length)
-init_marker = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
-cls_block = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
-if cls_block and "cumulative_length" not in cls_block.group() and init_marker in src:
-    src = src.replace(init_marker, init_marker + "\n    self.cumulative_length = 0", 1)
-    changed = True
-    print("Fix 2a: cumulative_length=0 added to LiteRTLMCacheLayer.__init__")
-
-# 2b: add get_max_length method after __init__
-if "def get_max_length" not in src and init_marker in src:
-    src = src.replace(
-        init_marker + "\n    self.cumulative_length = 0",
-        init_marker + "\n    self.cumulative_length = 0\n\n  def get_max_length(self):\n    return self.max_cache_len",
-        1,
-    )
-    changed = True
-    print("Fix 2b: get_max_length added to LiteRTLMCacheLayer")
-
-if changed:
-    cache_py.write_text(src)
-    # invalidate .pyc so Python re-compiles from the patched .py
-    import glob
-    for pyc in glob.glob(str(cache_py.parent / "__pycache__" / "cache*.pyc")):
-        pathlib.Path(pyc).unlink()
-        print(f"removed stale bytecode: {pyc}")
-else:
-    print("Fix 2: already complete, skipping")
+uv pip install --quiet litert-torch-nightly
 PYEOF
 
 cd "$JOBSCRATCH"
