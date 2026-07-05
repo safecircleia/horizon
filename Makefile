@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate benchmark create-benchmark check-metrics quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval slurm-benchmark
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval
 
 # Default target
 help:
@@ -27,9 +27,6 @@ help:
 	@echo ""
 	@echo "Evaluation:"
 	@echo "  make evaluate CHECKPOINT=<path>  Evaluate model checkpoint"
-	@echo "  make benchmark CHECKPOINT=<path>  Run held-out benchmark + regression check"
-	@echo "  make create-benchmark Create held-out benchmark set from eval split"
-	@echo "  make check-metrics    Compare benchmark results against baseline"
 	@echo "  make analyze-errors   Run error analysis on predictions"
 	@echo ""
 	@echo "Quantization:"
@@ -159,25 +156,6 @@ evaluate:
 
 analyze-errors:
 	python -m evaluation.analysis.error_analysis --predictions evaluation/reports/latest/predictions.jsonl
-
-create-benchmark:
-	python -m data.scripts.create_benchmark_set
-
-benchmark:
-	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make benchmark CHECKPOINT=experiments/run-1/final"; exit 1; fi
-	@if [ ! -f data/evaluation/benchmark.jsonl ]; then echo "No benchmark set found — running create-benchmark first..."; $(MAKE) create-benchmark; fi
-	python -m evaluation.metrics.evaluate \
-		--checkpoint $(CHECKPOINT) \
-		--test-set data/evaluation/benchmark.jsonl \
-		--output evaluation/reports/benchmark
-	$(MAKE) check-metrics
-
-check-metrics:
-	python scripts/check_metrics.py
-
-slurm-benchmark:
-	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make slurm-benchmark CHECKPOINT=experiments/run-xxx/final"; exit 1; fi
-	sbatch slurm/benchmark.sbatch --export=CHECKPOINT=$(CHECKPOINT)
 
 # Quantization
 quantize:

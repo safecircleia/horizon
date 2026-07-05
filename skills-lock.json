@@ -70,12 +70,6 @@
       "source": "addyosmani/web-quality-skills",
       "sourceType": "autoskills-registry",
       "computedHash": "c184da724d1c61ad077f27418ea8e7e88fd54bcdf98165e18be7e4681cbd5e20"
-    },
-    "text-to-lottie": {
-      "source": "diffusionstudio/lottie",
-      "sourceType": "github",
-      "skillPath": "skills/text-to-lottie/SKILL.md",
-      "computedHash": "0bfe1729dece6c1edd6fde2d909ffb497056800608d95aa92d82b5e61186755f"
     }
   }
 }
