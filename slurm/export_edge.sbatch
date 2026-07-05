@@ -105,8 +105,11 @@ if cls:
         if not hasattr(self, "cumulative_length"):
             self.cumulative_length = 0
     cls.__init__ = _init
-    if getattr(getattr(cls, "get_max_length", None), "__isabstractmethod__", True):
-        cls.get_max_length = lambda self: self.max_cache_len
+    cls.get_max_length = lambda self: self.max_cache_len
+    # Must remove from __abstractmethods__ or Python refuses to instantiate
+    cls.__abstractmethods__ = frozenset(
+        m for m in cls.__abstractmethods__ if m != "get_max_length"
+    )
 PYEOF
 echo "Fix 2: sitecustomize.py written to $SITE_PACKAGES"
 
