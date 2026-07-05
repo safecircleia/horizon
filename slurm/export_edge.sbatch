@@ -79,39 +79,50 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch-nightly
 
-echo "=== Patching litert-torch nightly via sitecustomize ==="
-# Write a sitecustomize.py that runs inside every Python subprocess in this venv,
-# including the litert-torch CLI. This avoids .pyc stale cache issues entirely.
+echo "=== Patching litert-torch nightly ==="
 SITE_PACKAGES=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
-# Fix 1: create missing experimental subpackage directly on the filesystem
-EXP_DIR="$SITE_PACKAGES/litert_torch/generative/export_hf/experimental"
-if [ ! -d "$EXP_DIR" ]; then
-    mkdir -p "$EXP_DIR"
-    echo "" > "$EXP_DIR/__init__.py"
-    echo "def transpile(*a, **k): raise NotImplementedError" > "$EXP_DIR/minijinja_transpile.py"
-    echo "Fix 1: created $EXP_DIR"
-else
-    echo "Fix 1: already present"
-fi
 
-# Fix 2: patch LiteRTLMCacheLayer via sitecustomize (runs after experimental exists)
-cat > "$SITE_PACKAGES/sitecustomize.py" << 'PYEOF'
-from litert_torch.generative.export_hf.core import cache as _c
-cls = getattr(_c, "LiteRTLMCacheLayer", None)
-if cls:
-    _orig = cls.__init__
-    def _init(self, *a, **kw):
-        _orig(self, *a, **kw)
-        if not hasattr(self, "cumulative_length"):
-            self.cumulative_length = 0
-    cls.__init__ = _init
-    cls.get_max_length = lambda self: self.max_cache_len
-    # Must remove from __abstractmethods__ or Python refuses to instantiate
-    cls.__abstractmethods__ = frozenset(
-        m for m in cls.__abstractmethods__ if m != "get_max_length"
-    )
+# Fix 1: create missing experimental subpackage
+EXP_DIR="$SITE_PACKAGES/litert_torch/generative/export_hf/experimental"
+mkdir -p "$EXP_DIR"
+echo "" > "$EXP_DIR/__init__.py"
+echo "def transpile(*a, **k): raise NotImplementedError" > "$EXP_DIR/minijinja_transpile.py"
+echo "Fix 1: experimental dir ready at $EXP_DIR"
+
+# Fix 2: patch cache.py directly — add get_max_length and cumulative_length to
+# LiteRTLMCacheLayer. Use Python only for the text transformation, no imports.
+CACHE_PY="$SITE_PACKAGES/litert_torch/generative/export_hf/core/cache.py"
+python3 - "$CACHE_PY" << 'PYEOF'
+import sys, pathlib, re
+
+cache_py = pathlib.Path(sys.argv[1])
+src = cache_py.read_text()
+marker = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
+
+if marker not in src:
+    print(f"WARNING: marker not found in {cache_py}")
+    sys.exit(0)
+
+addition = ""
+cls_block = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
+if cls_block and "self.cumulative_length" not in cls_block.group():
+    addition += "\n    self.cumulative_length = 0"
+if "def get_max_length" not in src:
+    addition += "\n\n  def get_max_length(self):\n    return self.max_cache_len"
+
+if not addition:
+    print("Fix 2: cache.py already patched")
+    sys.exit(0)
+
+patched = src.replace(marker, marker + addition, 1)
+cache_py.write_text(patched)
+
+# Remove stale bytecode
+for pyc in (cache_py.parent / "__pycache__").glob("cache*.pyc"):
+    pyc.unlink()
+
+print(f"Fix 2: cache.py patched ({addition.strip()!r})")
 PYEOF
-echo "Fix 2: sitecustomize.py written to $SITE_PACKAGES"
 
 cd "$JOBSCRATCH"
 
