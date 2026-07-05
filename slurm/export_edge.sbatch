@@ -77,7 +77,7 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="
-uv pip install --quiet litert-torch-nightly litert-lm-builder==0.13.0
+uv pip install --quiet litert-torch-nightly
 
 cd "$JOBSCRATCH"
 
