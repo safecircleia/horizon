@@ -79,6 +79,37 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch==0.9.1
 
+# Patch upstream bug: LiteRTLMCacheLayerForGemma4 is missing get_max_length
+# (declared abstract by transformers CacheLayerMixin). Inject it before export.
+python3 - <<'PYEOF'
+import site, pathlib, textwrap
+for sp in site.getsitepackages():
+    p = pathlib.Path(sp) / "litert_torch/generative/export_hf/model_ext/gemma4/cache.py"
+    if p.exists():
+        src = p.read_text()
+        method = textwrap.dedent("""
+    def get_max_length(self) -> int:
+        return self.max_cache_len
+""")
+        if "get_max_length" not in src:
+            # insert before first def in the class body
+            idx = src.find("\n    def ", src.find("class LiteRTLMCacheLayerForGemma4"))
+            src = src[:idx] + method + src[idx:]
+            p.write_text(src)
+            # remove stale bytecode
+            pyc = p.with_suffix(".pyc")
+            if pyc.exists():
+                pyc.unlink()
+            for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
+                c.unlink()
+            print(f"Patched {p}")
+        else:
+            print("Patch not needed")
+        break
+else:
+    print("WARNING: gemma4/cache.py not found — patch skipped")
+PYEOF
+
 cd "$JOBSCRATCH"
 
 # ── Export all variants ───────────────────────────────────────────────────────
