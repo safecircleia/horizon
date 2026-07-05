@@ -83,39 +83,32 @@ echo "=== Patching litert-torch nightly via sitecustomize ==="
 # Write a sitecustomize.py that runs inside every Python subprocess in this venv,
 # including the litert-torch CLI. This avoids .pyc stale cache issues entirely.
 SITE_PACKAGES=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+# Fix 1: create missing experimental subpackage directly on the filesystem
+EXP_DIR="$SITE_PACKAGES/litert_torch/generative/export_hf/experimental"
+if [ ! -d "$EXP_DIR" ]; then
+    mkdir -p "$EXP_DIR"
+    echo "" > "$EXP_DIR/__init__.py"
+    echo "def transpile(*a, **k): raise NotImplementedError" > "$EXP_DIR/minijinja_transpile.py"
+    echo "Fix 1: created $EXP_DIR"
+else
+    echo "Fix 1: already present"
+fi
+
+# Fix 2: patch LiteRTLMCacheLayer via sitecustomize (runs after experimental exists)
 cat > "$SITE_PACKAGES/sitecustomize.py" << 'PYEOF'
-import pathlib, re, sys
-
-try:
-    import litert_torch.generative.export_hf as _pkg
-except Exception:
-    pass  # not yet importable, skip
-else:
-    pkg_dir = pathlib.Path(_pkg.__file__).parent
-
-    # Fix 1: missing experimental subpackage
-    exp_dir = pkg_dir / "experimental"
-    if not exp_dir.exists():
-        exp_dir.mkdir()
-        (exp_dir / "__init__.py").write_text("")
-        (exp_dir / "minijinja_transpile.py").write_text(
-            "def transpile(*a, **k): raise NotImplementedError\n"
-        )
-
-    # Fix 2: patch LiteRTLMCacheLayer at runtime instead of touching the file
-    from litert_torch.generative.export_hf.core import cache as _cache_mod
-    cls = getattr(_cache_mod, "LiteRTLMCacheLayer", None)
-    if cls is not None:
-        orig_init = cls.__init__
-        def _patched_init(self, *args, **kwargs):
-            orig_init(self, *args, **kwargs)
-            if not hasattr(self, "cumulative_length"):
-                self.cumulative_length = 0
-        cls.__init__ = _patched_init
-        if not hasattr(cls, "get_max_length") or getattr(cls.get_max_length, "__isabstractmethod__", False):
-            cls.get_max_length = lambda self: self.max_cache_len
+from litert_torch.generative.export_hf.core import cache as _c
+cls = getattr(_c, "LiteRTLMCacheLayer", None)
+if cls:
+    _orig = cls.__init__
+    def _init(self, *a, **kw):
+        _orig(self, *a, **kw)
+        if not hasattr(self, "cumulative_length"):
+            self.cumulative_length = 0
+    cls.__init__ = _init
+    if getattr(getattr(cls, "get_max_length", None), "__isabstractmethod__", True):
+        cls.get_max_length = lambda self: self.max_cache_len
 PYEOF
-echo "sitecustomize.py written to $SITE_PACKAGES"
+echo "Fix 2: sitecustomize.py written to $SITE_PACKAGES"
 
 cd "$JOBSCRATCH"
 
