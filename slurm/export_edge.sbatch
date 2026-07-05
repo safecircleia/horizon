@@ -79,25 +79,25 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch==0.9.1
 
-# Patch upstream bug: LiteRTLMCacheLayer is missing get_max_length
-# (declared abstract by transformers CacheLayerMixin). Add it to the base
-# class so all subclasses (including LiteRTLMCacheLayerForGemma4) inherit it.
+# Patch upstream bug: LiteRTLMCacheLayerForGemma4 missing get_max_length.
+# Append monkey-patch to the gemma4 cache module — no anchor text needed.
 python3 - <<'PYEOF'
 import sys, pathlib
 sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-p = sp / "litert_torch/generative/export_hf/core/cache.py"
+p = sp / "litert_torch/generative/export_hf/model_ext/gemma4/cache.py"
 if not p.exists():
     print(f"WARNING: {p} not found — patch skipped"); sys.exit(0)
 src = p.read_text()
 if "get_max_length" in src:
-    print("Patch not needed"); sys.exit(0)
-# Insert get_max_length right after get_max_cache_shape in LiteRTLMCacheLayer
-needle = "    def get_max_cache_shape(self) -> int:\n        return self.max_cache_len\n"
-replacement = needle + "\n    def get_max_length(self) -> int:\n        return self.max_cache_len\n"
-if needle not in src:
-    print(f"WARNING: anchor not found in {p} — patch skipped"); sys.exit(0)
-src = src.replace(needle, replacement, 1)
-p.write_text(src)
+    print("Patch already applied"); sys.exit(0)
+patch = (
+    "\n# patch: missing abstract method (upstream bug in 0.9.1)\n"
+    "LiteRTLMCacheLayerForGemma4.get_max_length = lambda self: self.max_cache_len\n"
+    "LiteRTLMCacheLayerForGemma4.__abstractmethods__ = frozenset(\n"
+    "    m for m in LiteRTLMCacheLayerForGemma4.__abstractmethods__ if m != 'get_max_length'\n"
+    ")\n"
+)
+p.write_text(src + patch)
 for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
     c.unlink()
 print(f"Patched {p}")
