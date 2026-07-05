@@ -77,8 +77,7 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="
-uv pip install litert-torch-nightly || { echo "ERROR: litert-torch-nightly install failed (exit $?)"; exit 1; }
-PYEOF
+uv pip install --quiet litert-torch-nightly
 
 cd "$JOBSCRATCH"
 
