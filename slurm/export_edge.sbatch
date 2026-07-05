@@ -79,51 +79,43 @@ mkdir -p "$HF_HOME"
 echo "=== Installing litert-torch ==="
 uv pip install --quiet litert-torch-nightly
 
-echo "=== Patching litert-torch nightly ==="
-python3 - <<'PYEOF'
-import pathlib, glob, re
+echo "=== Patching litert-torch nightly via sitecustomize ==="
+# Write a sitecustomize.py that runs inside every Python subprocess in this venv,
+# including the litert-torch CLI. This avoids .pyc stale cache issues entirely.
+SITE_PACKAGES=$(.venv/bin/python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+cat > "$SITE_PACKAGES/sitecustomize.py" << 'PYEOF'
+import pathlib, re, sys
 
-import litert_torch.generative.export_hf as _pkg
-pkg_dir = pathlib.Path(_pkg.__file__).parent
-
-def invalidate_pyc(py_path):
-    cache_dir = py_path.parent / "__pycache__"
-    for pyc in cache_dir.glob(py_path.stem + "*.pyc"):
-        pyc.unlink()
-
-# Fix 1: missing experimental subpackage
-exp_dir = pkg_dir / "experimental"
-if not exp_dir.exists():
-    exp_dir.mkdir()
-    (exp_dir / "__init__.py").write_text("")
-    (exp_dir / "minijinja_transpile.py").write_text(
-        "def transpile(*a, **k): raise NotImplementedError\n"
-    )
-    print(f"Fix 1: created {exp_dir}")
+try:
+    import litert_torch.generative.export_hf as _pkg
+except Exception:
+    pass  # not yet importable, skip
 else:
-    print("Fix 1: already present")
+    pkg_dir = pathlib.Path(_pkg.__file__).parent
 
-# Fix 2: LiteRTLMCacheLayer missing cumulative_length and get_max_length
-cache_py = pkg_dir / "core" / "cache.py"
-src = cache_py.read_text()
-marker = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
-cls_match = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
-needs_cumulative = cls_match and "cumulative_length" not in cls_match.group()
-needs_get_max = "def get_max_length" not in src
+    # Fix 1: missing experimental subpackage
+    exp_dir = pkg_dir / "experimental"
+    if not exp_dir.exists():
+        exp_dir.mkdir()
+        (exp_dir / "__init__.py").write_text("")
+        (exp_dir / "minijinja_transpile.py").write_text(
+            "def transpile(*a, **k): raise NotImplementedError\n"
+        )
 
-if (needs_cumulative or needs_get_max) and marker in src:
-    addition = ""
-    if needs_cumulative:
-        addition += "\n    self.cumulative_length = 0"
-    if needs_get_max:
-        addition += "\n\n  def get_max_length(self):\n    return self.max_cache_len"
-    src = src.replace(marker, marker + addition, 1)
-    cache_py.write_text(src)
-    invalidate_pyc(cache_py)
-    print(f"Fix 2: patched cache.py (cumulative={needs_cumulative}, get_max_length={needs_get_max})")
-else:
-    print("Fix 2: already complete")
+    # Fix 2: patch LiteRTLMCacheLayer at runtime instead of touching the file
+    from litert_torch.generative.export_hf.core import cache as _cache_mod
+    cls = getattr(_cache_mod, "LiteRTLMCacheLayer", None)
+    if cls is not None:
+        orig_init = cls.__init__
+        def _patched_init(self, *args, **kwargs):
+            orig_init(self, *args, **kwargs)
+            if not hasattr(self, "cumulative_length"):
+                self.cumulative_length = 0
+        cls.__init__ = _patched_init
+        if not hasattr(cls, "get_max_length") or getattr(cls.get_max_length, "__isabstractmethod__", False):
+            cls.get_max_length = lambda self: self.max_cache_len
 PYEOF
+echo "sitecustomize.py written to $SITE_PACKAGES"
 
 cd "$JOBSCRATCH"
 
