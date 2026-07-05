@@ -82,7 +82,7 @@ uv pip install --quiet litert-torch-nightly
 echo "=== Patching litert-torch nightly via sitecustomize ==="
 # Write a sitecustomize.py that runs inside every Python subprocess in this venv,
 # including the litert-torch CLI. This avoids .pyc stale cache issues entirely.
-SITE_PACKAGES=$(.venv/bin/python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+SITE_PACKAGES=$(python3 -c "import sysconfig; print(sysconfig.get_path('purelib'))")
 cat > "$SITE_PACKAGES/sitecustomize.py" << 'PYEOF'
 import pathlib, re, sys
 
