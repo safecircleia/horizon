@@ -99,25 +99,33 @@ exp_dir.mkdir(exist_ok=True)
 print(f"Fix 1: experimental shim written to {exp_dir}")
 
 # Fix 2: LiteRTLMCacheLayer missing get_max_length + cumulative_length
+import re
 cache_py = pkg_dir / "core" / "cache.py"
 src = cache_py.read_text()
-insert_after = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
-patch = ""
-if "def get_max_length" not in src:
-    patch += "\n\n  def get_max_length(self):\n    return self.max_cache_len"
-# Check if cumulative_length is missing from LiteRTLMCacheLayer.__init__ specifically
-import re
-cls_init = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
-if cls_init and "cumulative_length" not in cls_init.group():
-    patch += "\n    self.cumulative_length = 0"
-if patch and insert_after in src:
-    src = src.replace(insert_after, insert_after + patch, 1)
+changed = False
+
+# 2a: inject cumulative_length=0 into __init__ (separate from get_max_length)
+init_marker = "    self.head_dim = self.v_cache_shape[v_head_dim_idx]"
+cls_block = re.search(r'class LiteRTLMCacheLayer\b.*?def update\b', src, re.DOTALL)
+if cls_block and "cumulative_length" not in cls_block.group() and init_marker in src:
+    src = src.replace(init_marker, init_marker + "\n    self.cumulative_length = 0", 1)
+    changed = True
+    print("Fix 2a: cumulative_length=0 added to LiteRTLMCacheLayer.__init__")
+
+# 2b: add get_max_length method after __init__
+if "def get_max_length" not in src and init_marker in src:
+    src = src.replace(
+        init_marker + "\n    self.cumulative_length = 0",
+        init_marker + "\n    self.cumulative_length = 0\n\n  def get_max_length(self):\n    return self.max_cache_len",
+        1,
+    )
+    changed = True
+    print("Fix 2b: get_max_length added to LiteRTLMCacheLayer")
+
+if changed:
     cache_py.write_text(src)
-    print(f"Fix 2: patched cache.py ({patch.strip()!r})")
-elif not patch:
-    print("Fix 2: already complete, skipping")
 else:
-    print("WARNING: Fix 2 marker not found — cache.py may have changed")
+    print("Fix 2: already complete, skipping")
 PYEOF
 
 cd "$JOBSCRATCH"
