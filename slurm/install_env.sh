@@ -15,7 +15,7 @@ VENV="$PROJECT_ROOT/.venv"
 
 if [ ! -f "$VENV/bin/activate" ]; then
     echo "Creating venv at $VENV..."
-    python3 -m venv "$VENV"
+    python3.11 -m venv "$VENV"
 fi
 
 # shellcheck disable=SC1091
