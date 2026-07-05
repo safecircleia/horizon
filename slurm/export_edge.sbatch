@@ -124,6 +124,11 @@ if "def get_max_length" not in src and init_marker in src:
 
 if changed:
     cache_py.write_text(src)
+    # invalidate .pyc so Python re-compiles from the patched .py
+    import glob
+    for pyc in glob.glob(str(cache_py.parent / "__pycache__" / "cache*.pyc")):
+        pathlib.Path(pyc).unlink()
+        print(f"removed stale bytecode: {pyc}")
 else:
     print("Fix 2: already complete, skipping")
 PYEOF
