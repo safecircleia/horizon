@@ -29,6 +29,7 @@ from tqdm import tqdm
 RISK_LEVELS = ["none", "low", "medium", "high", "critical"]
 CATEGORIES = ["grooming", "bullying", "sexual_content", "isolation", "personal_info", "platform_migration", "threats"]
 ASSISTANT_TAG = "<|start_header_id|>assistant<|end_header_id|>"
+GEMMA_ASSISTANT_TAG = "<start_of_turn>model"
 
 
 def load_test_set(path: str) -> list[dict]:
@@ -42,8 +43,9 @@ def load_test_set(path: str) -> list[dict]:
 
 
 def _extract_prompt(text: str) -> str:
-    if ASSISTANT_TAG in text:
-        return text[:text.rindex(ASSISTANT_TAG) + len(ASSISTANT_TAG)] + "\n"
+    for tag in (ASSISTANT_TAG, GEMMA_ASSISTANT_TAG):
+        if tag in text:
+            return text[:text.rindex(tag) + len(tag)] + "\n"
     return text
 
 
