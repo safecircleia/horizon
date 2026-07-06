@@ -7,9 +7,8 @@
 #   sbatch slurm/benchmark.sbatch --export=CHECKPOINT=experiments/run-xxx/final,SAVE_BASELINE=1
 
 #SBATCH --job-name=horizon-benchmark
-#SBATCH --partition=gpu
+#SBATCH --partition=gpuUltra
 #SBATCH --nodes=1
-#SBATCH --nodelist=slurm-gpu08
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
