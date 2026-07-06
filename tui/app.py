@@ -234,6 +234,7 @@ MENU_ITEMS = [
     ("merge", "Merge LoRA Adapter"),
     ("export", "Export to LiteRT-LM"),
     ("evaluate", "Run Evaluation"),
+    ("benchmark", "Run Accuracy Benchmark"),
     ("test", "Test LiteRT-LM Model"),
     ("upload", "Upload Models (HF + R2)"),
     ("jobs", "View SLURM Jobs"),
@@ -546,6 +547,8 @@ class HorizonApp(App):
             self._show_export(panel)
         elif action == "evaluate":
             self._show_evaluate(panel)
+        elif action == "benchmark":
+            self._show_benchmark(panel)
         elif action == "test":
             self._show_test(panel)
         elif action == "upload":
@@ -638,6 +641,21 @@ class HorizonApp(App):
         panel.show_submenu("Cleanup — select to delete", items)
         self._cleanup_experiments = experiments
 
+    def _show_benchmark(self, panel: ActionPanel) -> None:
+        experiments = actions.list_experiments()
+        finals = [e for e in experiments if (Path(e["path"]) / "final").exists()]
+        items = []
+        if finals:
+            for i, e in enumerate(finals):
+                items.append((f"bench-{i}", f"{e['name']} ({e['size']})"))
+                items.append((f"bench-baseline-{i}", f"{e['name']} — run & save as baseline"))
+        else:
+            items.append(("bench-default", "Run benchmark (default checkpoint)"))
+        items.append(("bench-create-split", "Create / refresh benchmark split"))
+        items.append(("bench-view-report", "View last benchmark report"))
+        panel.show_submenu("Run Accuracy Benchmark", items)
+        self._bench_candidates = finals
+
     def _show_maintenance(self, panel: ActionPanel) -> None:
         items = [
             ("maint-deps", "Update dependencies (uv pip install -r requirements.txt)"),
@@ -713,6 +731,48 @@ class HorizonApp(App):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
                 ok, msg = actions.submit_evaluate(checkpoint)
                 self._submit_and_offer_focus(ok, msg, f"eval {candidates[idx]['name']}")
+
+        # Benchmark
+        elif item_id.startswith("bench-baseline-"):
+            idx = int(item_id.split("-", 2)[2])
+            candidates = getattr(self, "_bench_candidates", [])
+            if 0 <= idx < len(candidates):
+                checkpoint = f"experiments/{candidates[idx]['name']}/final"
+                ok, msg = actions.submit_benchmark(checkpoint, save_baseline=True)
+                self._submit_and_offer_focus(ok, msg, f"benchmark {candidates[idx]['name']}")
+        elif item_id.startswith("bench-") and not item_id.startswith("bench-create") and not item_id.startswith("bench-view") and not item_id.startswith("bench-default"):
+            idx = int(item_id.split("-", 1)[1])
+            candidates = getattr(self, "_bench_candidates", [])
+            if 0 <= idx < len(candidates):
+                checkpoint = f"experiments/{candidates[idx]['name']}/final"
+                ok, msg = actions.submit_benchmark(checkpoint)
+                self._submit_and_offer_focus(ok, msg, f"benchmark {candidates[idx]['name']}")
+        elif item_id == "bench-default":
+            ok, msg = actions.submit_benchmark("models/horizon-edge-2b")
+            self._submit_and_offer_focus(ok, msg, "benchmark")
+        elif item_id == "bench-create-split":
+            self.notify("Creating benchmark split…")
+            ok, msg = actions.create_benchmark_split()
+            self.notify("Benchmark split created" if ok else f"Failed: {msg[:60]}")
+            panel.show_log(msg)
+        elif item_id == "bench-view-report":
+            report = actions.load_latest_benchmark_report()
+            if report is None:
+                panel.show_message("Benchmark Report", "No report found. Run a benchmark first.")
+            else:
+                import json as _json
+                s = report.get("summary", {})
+                lines = [
+                    f"Checkpoint: {report.get('checkpoint', 'unknown')}",
+                    "",
+                    f"  Recall:    {s.get('recall', 'N/A')}  [target ≥ 0.97]",
+                    f"  FPR:       {s.get('fpr', 'N/A')}  [target ≤ 0.03]",
+                    f"  Precision: {s.get('precision', 'N/A')}  [target ≥ 0.95]",
+                    f"  Weighted F1: {s.get('f1', 'N/A')}  [target ≥ 0.96]",
+                    f"  Macro F1:    {s.get('macro_f1', 'N/A')}",
+                ]
+                panel.show_submenu("Last Benchmark Report", [("bench-view-report", "Refresh")])
+                panel.show_log("\n".join(lines))
 
         # Test LiteRT-LM
         elif item_id == "test-default":

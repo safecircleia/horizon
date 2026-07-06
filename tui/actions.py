@@ -62,6 +62,33 @@ def submit_evaluate(checkpoint: str) -> tuple[bool, str]:
     )
 
 
+def submit_benchmark(checkpoint: str, save_baseline: bool = False) -> tuple[bool, str]:
+    export_vars: dict = {"CHECKPOINT": checkpoint}
+    if save_baseline:
+        export_vars["SAVE_BASELINE"] = "1"
+    return sbatch(
+        str(PROJECT_ROOT / "slurm/benchmark.sbatch"),
+        export_vars=export_vars,
+    )
+
+
+def create_benchmark_split() -> tuple[bool, str]:
+    result = subprocess.run(
+        ["python", "-m", "data.scripts.create_benchmark_split"],
+        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+    )
+    return result.returncode == 0, result.stdout + result.stderr
+
+
+def load_latest_benchmark_report() -> dict | None:
+    report_path = PROJECT_ROOT / "evaluation/reports/benchmark/results.json"
+    if not report_path.exists():
+        return None
+    import json
+    with open(report_path) as f:
+        return json.load(f)
+
+
 # ── Test LiteRT-LM ──────────────────────────────────────────────────────────
 
 def submit_test_litert(model_path: str = None) -> tuple[bool, str]:
