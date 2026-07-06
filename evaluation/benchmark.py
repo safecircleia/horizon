@@ -23,13 +23,15 @@ from evaluation.metrics.evaluate import (
     RISK_LEVELS,
     CATEGORIES,
 )
+from evaluation.rules import compute_rule_catch_rate
 
 # Targets from issue #11
 TARGETS = {
-    "recall": 0.97,       # true positive rate ≥ 97%
-    "fpr": 0.03,          # false positive rate ≤ 3%
-    "precision": 0.95,    # precision ≥ 95%
-    "f1": 0.96,           # F1 ≥ 0.96
+    "recall": 0.97,           # true positive rate ≥ 97%
+    "fpr": 0.03,              # false positive rate ≤ 3%
+    "precision": 0.95,        # precision ≥ 95%
+    "f1": 0.96,               # F1 ≥ 0.96
+    "rule_catch_rate": 0.80,  # level 0-3 rule-based catch rate ≥ 80%
 }
 
 BENCHMARK_SET = Path("data/evaluation/benchmark.jsonl")
@@ -60,6 +62,8 @@ def check_targets(summary: dict) -> list[str]:
         failures.append(f"precision {summary['precision']:.4f} < target {TARGETS['precision']}")
     if summary["f1"] < TARGETS["f1"]:
         failures.append(f"F1 {summary['f1']:.4f} < target {TARGETS['f1']}")
+    if "rule_catch_rate" in summary and summary["rule_catch_rate"] < TARGETS["rule_catch_rate"]:
+        failures.append(f"rule catch rate {summary['rule_catch_rate']:.4f} < target {TARGETS['rule_catch_rate']}")
     return failures
 
 
@@ -85,6 +89,9 @@ def print_benchmark_report(summary: dict, target_failures: list[str], regression
     print(f"  Precision:    {summary['precision']:.4f}  [target ≥ {TARGETS['precision']}]  {'✓' if summary['precision'] >= TARGETS['precision'] else '✗'}")
     print(f"  Binary F1:    {summary['f1']:.4f}  [target ≥ {TARGETS['f1']}]  {'✓' if summary['f1'] >= TARGETS['f1'] else '✗'}")
     print(f"  Macro F1:     {summary['macro_f1']:.4f}")
+    if "rule_catch_rate" in summary:
+        rcr = summary["rule_catch_rate"]
+        print(f"  Rule catch:   {rcr:.4f}  [target ≥ {TARGETS['rule_catch_rate']}]  {'✓' if rcr >= TARGETS['rule_catch_rate'] else '✗'}")
 
     if regressions:
         print(f"\n  REGRESSIONS vs baseline:")
@@ -202,6 +209,13 @@ def main() -> None:
 
     results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
     summary = _summary(results)
+
+    # Rule-based catch rate (Level 0-3, no LLM)
+    rule_labels = [ex["label"] for ex in examples]
+    rule_stats = compute_rule_catch_rate(examples, rule_labels)
+    summary["rule_catch_rate"] = rule_stats["catch_rate"]
+    print(f"\n  Rule catch rate: {rule_stats['caught']}/{rule_stats['total_risk']} risk examples "
+          f"({rule_stats['catch_rate']:.1%})  FP rate: {rule_stats['fp_rate']:.1%}")
 
     # Latency percentiles
     latencies_sorted = sorted(latencies)

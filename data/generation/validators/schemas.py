@@ -27,6 +27,14 @@ class RiskCategory(str, Enum):
     BENIGN = "benign"
 
 
+class GroomingStage(str, Enum):
+    """Grooming progression stages (only meaningful when category=grooming)."""
+    TARGETING = "targeting"
+    TRUST_BUILDING = "trust_building"
+    ISOLATION = "isolation"
+    DESENSITIZATION = "desensitization"
+
+
 class Message(BaseModel):
     """Single message in a conversation."""
     role: str = Field(..., description="Message sender role: 'sent' or 'received'")
@@ -47,6 +55,14 @@ class ConversationLabel(BaseModel):
     categories: List[RiskCategory] = Field(default_factory=list)
     severity_score: float = Field(..., ge=0.0, le=1.0)
     reasoning: str = Field(..., min_length=10, description="Why this label was assigned")
+    grooming_stage: Optional[GroomingStage] = Field(
+        default=None,
+        description="Grooming progression stage; only set when category includes grooming",
+    )
+    context_dependent: bool = Field(
+        default=False,
+        description="True when risk only becomes apparent across multiple messages in sequence",
+    )
 
     @field_validator("categories")
     @classmethod
