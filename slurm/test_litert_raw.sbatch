@@ -21,6 +21,7 @@ cd "$SUBMIT_DIR"
 
 VENV="$SUBMIT_DIR/.venv"
 source "$VENV/bin/activate"
+export PYTHONUNBUFFERED=1
 uv pip install --quiet litert-lm 2>/dev/null || true
 
 MODEL_INT8="models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"

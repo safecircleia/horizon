@@ -28,6 +28,7 @@ if [ ! -f "$VENV/bin/activate" ]; then
     python3 -m venv "$VENV"
 fi
 source "$VENV/bin/activate"
+export PYTHONUNBUFFERED=1
 
 echo "Installing litert-lm..."
 uv pip install --quiet litert-lm

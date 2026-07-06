@@ -60,6 +60,7 @@ if [ -f "$SUBMIT_DIR/.env" ]; then
 fi
 
 export HF_HOME="$JOBSCRATCH/.cache/huggingface"
+export PYTHONUNBUFFERED=1
 mkdir -p "$HF_HOME"
 
 uv pip install --quiet tensorflow litert-torch litert-lm-builder

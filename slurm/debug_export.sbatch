@@ -30,6 +30,7 @@ if [ -f "$SUBMIT_DIR/.env" ]; then
 fi
 
 export HF_HOME="$SUBMIT_DIR/.cache/huggingface"
+export PYTHONUNBUFFERED=1
 uv pip install --quiet tensorflow litert-torch litert-lm-builder
 
 # Find the latest checkpoint

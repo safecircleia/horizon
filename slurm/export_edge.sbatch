@@ -73,6 +73,7 @@ if [ -f "$SUBMIT_DIR/.env" ]; then
 fi
 
 export HF_HOME="$JOBSCRATCH/.cache/huggingface"
+export PYTHONUNBUFFERED=1
 mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch ==="

@@ -73,6 +73,7 @@ if [ -f "$SUBMIT_DIR/.env" ]; then
 fi
 
 export HF_HOME="$JOBSCRATCH/.cache/huggingface"
+export PYTHONUNBUFFERED=1
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 export ARTIFACTS_DIR="$JOBSCRATCH/experiments"
 export PERSISTENT_ARTIFACTS_DIR="/slurm/home/$USER/artifacts"
