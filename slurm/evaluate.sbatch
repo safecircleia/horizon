@@ -42,7 +42,7 @@ trap cleanup EXIT INT TERM
 
 # ── Copy project + checkpoint to scratch ─────────────────────────────────────
 echo "=== Copying project to scratch ==="
-rsync -a --exclude='.venv' --exclude='data' \
+rsync -a --exclude='.venv' --exclude='data' --exclude='experiments' --exclude='models' \
     "$SUBMIT_DIR/" "$JOBSCRATCH/"
 
 echo "=== Copying eval dataset ==="
