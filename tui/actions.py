@@ -89,12 +89,11 @@ def load_latest_benchmark_report() -> dict | None:
         return json.load(f)
 
 
-def run_profile_mobile(model_path: str, runs: int = 10) -> tuple[bool, str]:
-    result = subprocess.run(
-        ["python", "-m", "evaluation.profile_mobile", "--model", model_path, "--runs", str(runs)],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+def submit_profile_mobile(model_path: str, runs: int = 10) -> tuple[bool, str]:
+    return sbatch(
+        str(PROJECT_ROOT / "slurm/profile_mobile.sbatch"),
+        export_vars={"MODEL_PATH": model_path, "RUNS": str(runs)},
     )
-    return result.returncode == 0, result.stdout + result.stderr
 
 
 # ── Test LiteRT-LM ──────────────────────────────────────────────────────────

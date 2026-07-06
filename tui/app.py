@@ -777,10 +777,9 @@ class HorizonApp(App):
             if not litertlm_files:
                 panel.show_message("Profile Mobile", "No .litertlm models found in models/. Export the mobile model first.")
             else:
-                model_path = str(litertlm_files[0])
-                self.notify(f"Profiling {litertlm_files[0].name}…")
-                ok, msg = actions.run_profile_mobile(model_path)
-                panel.show_log(msg)
+                model_path = str(litertlm_files[0].relative_to(actions.PROJECT_ROOT))
+                ok, msg = actions.submit_profile_mobile(model_path)
+                self._submit_and_offer_focus(ok, msg, f"profile {litertlm_files[0].name}")
         elif item_id == "bench-view-report":
             report = actions.load_latest_benchmark_report()
             if report is None:
