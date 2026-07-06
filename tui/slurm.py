@@ -63,7 +63,7 @@ def tail_log(job_id: str, lines: int = 50) -> str:
     """Read the last N lines of a job's stdout log."""
     import os
     user = os.environ.get("USER", "")
-    log_path = f"/slurm/home/{user}/output/{job_id}.out"
+    log_path = f"/slurm/home/{user}/output/{job_id}/terminal.out"
     result = subprocess.run(["tail", f"-n{lines}", log_path], capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout
@@ -74,7 +74,7 @@ def tail_err_log(job_id: str, lines: int = 50) -> str:
     """Read the last N lines of a job's stderr log."""
     import os
     user = os.environ.get("USER", "")
-    log_path = f"/slurm/home/{user}/output/{job_id}.err"
+    log_path = f"/slurm/home/{user}/output/{job_id}/terminal.err"
     result = subprocess.run(["tail", f"-n{lines}", log_path], capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout or "(stderr is empty)"

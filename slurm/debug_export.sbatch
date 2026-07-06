@@ -13,8 +13,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --mem=32G
 #SBATCH --time=01:00:00
-#SBATCH --output=/slurm/home/%u/output/%j.out
-#SBATCH --error=/slurm/home/%u/output/%j.err
+#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
+#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
 
 set -euo pipefail
 

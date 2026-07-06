@@ -14,8 +14,8 @@
 #SBATCH --gres=gpu:nvidia_l4
 #SBATCH --mem=60G
 #SBATCH --time=24:00:00
-#SBATCH --output=/slurm/home/%u/output/%j.out
-#SBATCH --error=/slurm/home/%u/output/%j.err
+#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
+#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
 
 set -euo pipefail
 
