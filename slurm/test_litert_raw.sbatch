@@ -9,13 +9,12 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=00:15:00
-#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
-#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
+#SBATCH --output=/slurm/home/%u/output/%j.out
+#SBATCH --error=/slurm/home/%u/output/%j.err
 
 set -euo pipefail
 
-OUTDIR="/slurm/home/$USER/output/$SLURM_JOB_ID"
-mkdir -p "$OUTDIR"
+OUTDIR="/slurm/home/$USER/output"
 
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$SUBMIT_DIR"

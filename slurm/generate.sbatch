@@ -17,16 +17,15 @@
 #SBATCH --gres=gpu:nvidia_h100_nvl
 #SBATCH --mem=120G
 #SBATCH --time=24:00:00
-#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
-#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
+#SBATCH --output=/slurm/home/%u/output/%j.out
+#SBATCH --error=/slurm/home/%u/output/%j.err
 
 set -euo pipefail
 
 CONCURRENCY="${CONCURRENCY:-150}"
 GEN_LANGUAGE="${GEN_LANGUAGE:-mixed}"   # en | es | mixed
 
-OUTDIR="/slurm/home/$USER/output/$SLURM_JOB_ID"
-mkdir -p "$OUTDIR"
+OUTDIR="/slurm/home/$USER/output"
 
 SCRATCH="${SLURM_TMPDIR:-/scratch/slurm/$USER/$SLURM_JOB_ID/tmp}"
 JOBSCRATCH="${SCRATCH}/horizon-gen-${SLURM_JOB_ID}"

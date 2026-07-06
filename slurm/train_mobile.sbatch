@@ -17,14 +17,13 @@
 #SBATCH --gres=gpu:nvidia_l40s
 #SBATCH --mem=60G
 #SBATCH --time=3-00:00:00
-#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
-#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
+#SBATCH --output=/slurm/home/%u/output/%j.out
+#SBATCH --error=/slurm/home/%u/output/%j.err
 
 set -euo pipefail
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-OUTDIR="/slurm/home/$USER/output/$SLURM_JOB_ID"
-mkdir -p "$OUTDIR"
+OUTDIR="/slurm/home/$USER/output"
 
 SCRATCH="${SLURM_TMPDIR:-/scratch/slurm/$USER/$SLURM_JOB_ID/tmp}"
 JOBSCRATCH="${SCRATCH}/horizon-mobile-${SLURM_JOB_ID}"

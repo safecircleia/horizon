@@ -16,8 +16,8 @@
 #SBATCH --gres=gpu:nvidia_h100_nvl
 #SBATCH --mem=120G
 #SBATCH --time=06:00:00
-#SBATCH --output=/slurm/home/%u/output/%j/terminal.out
-#SBATCH --error=/slurm/home/%u/output/%j/terminal.err
+#SBATCH --output=/slurm/home/%u/output/%j.out
+#SBATCH --error=/slurm/home/%u/output/%j.err
 
 set -euo pipefail
 
@@ -40,8 +40,7 @@ if [ -z "${MODEL_SIZE:-}" ]; then
     exit 1
 fi
 
-OUTDIR="/slurm/home/$USER/output/$SLURM_JOB_ID"
-mkdir -p "$OUTDIR"
+OUTDIR="/slurm/home/$USER/output"
 
 SCRATCH="${SLURM_TMPDIR:-/scratch/slurm/$USER/$SLURM_JOB_ID/tmp}"
 JOBSCRATCH="${SCRATCH}/horizon-export-edge-${SLURM_JOB_ID}"
