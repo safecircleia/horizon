@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -64,7 +65,10 @@ def _parse_prediction(generated: str) -> Optional[dict]:
     return None
 
 
-def run_inference_batch(model, tokenizer, prompts: list[str], max_new_tokens: int = 256) -> list[Optional[dict]]:
+def run_inference_batch(
+    model, tokenizer, prompts: list[str], max_new_tokens: int = 256
+) -> tuple[list[Optional[dict]], float]:
+    """Returns (predictions, latency_seconds_per_example)."""
     inputs = tokenizer(
         prompts,
         return_tensors="pt",
@@ -75,6 +79,7 @@ def run_inference_batch(model, tokenizer, prompts: list[str], max_new_tokens: in
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
     input_len = inputs["input_ids"].shape[1]
 
+    t0 = time.perf_counter()
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
@@ -82,12 +87,13 @@ def run_inference_batch(model, tokenizer, prompts: list[str], max_new_tokens: in
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
+    elapsed = time.perf_counter() - t0
 
     results = []
     for output in outputs:
         generated = tokenizer.decode(output[input_len:], skip_special_tokens=True)
         results.append(_parse_prediction(generated))
-    return results
+    return results, elapsed / len(prompts)
 
 
 def run_inference_batch_debug(model, tokenizer, prompts: list[str], max_new_tokens: int = 256) -> list[str]:
@@ -150,6 +156,17 @@ def compute_metrics(
     results["per_category"] = cat_results
 
     return results
+
+
+def print_confusion_matrix(results: dict) -> None:
+    cm = results["risk_level"]["confusion_matrix"]
+    labels = RISK_LEVELS
+    col_w = 10
+    header = f"{'':12s}" + "".join(f"{l:>{col_w}}" for l in labels)
+    print("\nConfusion matrix (rows=true, cols=predicted):")
+    print(header)
+    for i, row in enumerate(cm):
+        print(f"  {labels[i]:10s}" + "".join(f"{v:>{col_w}}" for v in row))
 
 
 def print_report(results: dict):
@@ -241,7 +258,7 @@ def main():
                     label = json.loads(label)
                 labels.append(label)
 
-            predictions = run_inference_batch(model, tokenizer, prompts)
+            predictions, _ = run_inference_batch(model, tokenizer, prompts)
 
             for label, prediction in zip(labels, predictions):
                 true_level = label.get("risk_level", "none")
@@ -269,6 +286,7 @@ def main():
 
     results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
     print_report(results)
+    print_confusion_matrix(results)
 
     output_dir = Path(args.output) / "latest"
     output_dir.mkdir(parents=True, exist_ok=True)

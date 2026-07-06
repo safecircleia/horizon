@@ -19,6 +19,7 @@ from evaluation.metrics.evaluate import (
     load_test_set,
     run_inference_batch,
     compute_metrics,
+    print_confusion_matrix,
     RISK_LEVELS,
     CATEGORIES,
 )
@@ -155,6 +156,7 @@ def main() -> None:
 
     y_true_levels, y_pred_levels = [], []
     y_true_cats, y_pred_cats = [], []
+    latencies: list[float] = []
     failures = 0
     batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
     total = len(examples)
@@ -170,7 +172,8 @@ def main() -> None:
                 label = json.loads(label)
             labels.append(label)
 
-        predictions = run_inference_batch(model, tokenizer, prompts)
+        predictions, per_example_latency = run_inference_batch(model, tokenizer, prompts)
+        latencies.extend([per_example_latency] * len(batch))
 
         for label, prediction in zip(labels, predictions):
             true_level = label.get("risk_level", "none")
@@ -200,6 +203,14 @@ def main() -> None:
     results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
     summary = _summary(results)
 
+    # Latency percentiles
+    latencies_sorted = sorted(latencies)
+    n = len(latencies_sorted)
+    def _pct(p: float) -> float:
+        return round(latencies_sorted[min(int(p / 100 * n), n - 1)] * 1000, 1)
+    latency = {"p50_ms": _pct(50), "p95_ms": _pct(95), "p99_ms": _pct(99)}
+    print(f"\n  Latency (per example, batched):  P50={latency['p50_ms']}ms  P95={latency['p95_ms']}ms  P99={latency['p99_ms']}ms")
+
     baseline = {}
     baseline_path = Path(args.baseline)
     if baseline_path.exists():
@@ -210,10 +221,11 @@ def main() -> None:
     target_failures = check_targets(summary)
     regressions = check_regression(summary, baseline)
     print_benchmark_report(summary, target_failures, regressions)
+    print_confusion_matrix(results)
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-    report = {"summary": summary, "full": results, "checkpoint": args.checkpoint}
+    report = {"summary": summary, "latency": latency, "full": results, "checkpoint": args.checkpoint}
     with open(output_dir / "results.json", "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nResults saved to {output_dir}/results.json")
