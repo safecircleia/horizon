@@ -756,7 +756,7 @@ class HorizonApp(App):
                 checkpoint = f"experiments/{candidates[idx]['name']}/final"
                 ok, msg = actions.submit_benchmark(checkpoint, save_baseline=True)
                 self._submit_and_offer_focus(ok, msg, f"benchmark {candidates[idx]['name']}")
-        elif item_id.startswith("bench-") and not item_id.startswith("bench-create") and not item_id.startswith("bench-view") and not item_id.startswith("bench-default"):
+        elif item_id.startswith("bench-") and not item_id.startswith("bench-create") and not item_id.startswith("bench-view") and not item_id.startswith("bench-default") and not item_id.startswith("bench-profile"):
             idx = int(item_id.split("-", 1)[1])
             candidates = getattr(self, "_bench_candidates", [])
             if 0 <= idx < len(candidates):
