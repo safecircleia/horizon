@@ -48,6 +48,13 @@ echo "=== Copying project to scratch ==="
 rsync -a --exclude='.venv' --exclude='data' --exclude='experiments' --exclude='models' \
     "$SUBMIT_DIR/" "$JOBSCRATCH/"
 
+echo "=== Copying eval dataset ==="
+mkdir -p "$JOBSCRATCH/data/processed"
+rsync -a "$SUBMIT_DIR/data/processed/eval.jsonl" "$JOBSCRATCH/data/processed/" || {
+    echo "ERROR: data/processed/eval.jsonl not found — run the data pipeline first"
+    exit 1
+}
+
 echo "=== Copying benchmark split ==="
 mkdir -p "$JOBSCRATCH/data/evaluation"
 rsync -a "$SUBMIT_DIR/data/evaluation/benchmark.jsonl" "$JOBSCRATCH/data/evaluation/" 2>/dev/null || true
