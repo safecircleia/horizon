@@ -40,12 +40,11 @@ def _summary(results: dict) -> dict:
     """Flatten to a simple dict of headline metrics."""
     rl = results["risk_level"]
     b = results["binary"]
-    recall = 1.0 - b["false_negative_rate"]
     return {
-        "recall": round(recall, 4),
+        "recall": b["recall"],
         "fpr": b["false_positive_rate"],
-        "precision": round(rl["classification_report"].get("risk", {}).get("precision", 0), 4),
-        "f1": round(rl["weighted_f1"], 4),
+        "precision": b["precision"],
+        "f1": b["f1"],
         "macro_f1": round(rl["macro_f1"], 4),
     }
 
@@ -83,7 +82,7 @@ def print_benchmark_report(summary: dict, target_failures: list[str], regression
     print(f"\n  Recall (TPR): {summary['recall']:.4f}  [target ≥ {TARGETS['recall']}]  {'✓' if summary['recall'] >= TARGETS['recall'] else '✗'}")
     print(f"  False Positive Rate: {summary['fpr']:.4f}  [target ≤ {TARGETS['fpr']}]  {'✓' if summary['fpr'] <= TARGETS['fpr'] else '✗'}")
     print(f"  Precision:    {summary['precision']:.4f}  [target ≥ {TARGETS['precision']}]  {'✓' if summary['precision'] >= TARGETS['precision'] else '✗'}")
-    print(f"  Weighted F1:  {summary['f1']:.4f}  [target ≥ {TARGETS['f1']}]  {'✓' if summary['f1'] >= TARGETS['f1'] else '✗'}")
+    print(f"  Binary F1:    {summary['f1']:.4f}  [target ≥ {TARGETS['f1']}]  {'✓' if summary['f1'] >= TARGETS['f1'] else '✗'}")
     print(f"  Macro F1:     {summary['macro_f1']:.4f}")
 
     if regressions:

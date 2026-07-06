@@ -123,10 +123,14 @@ def compute_metrics(
     total_risk = y_true_binary.count("risk")
     fp = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "benign" and p == "risk")
     fn = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "risk" and p == "benign")
+    tp = total_risk - fn
 
     results["binary"] = {
         "false_positive_rate": round(fp / total_benign, 4) if total_benign else 0,
         "false_negative_rate": round(fn / total_risk, 4) if total_risk else 0,
+        "precision": round(tp / (tp + fp), 4) if (tp + fp) > 0 else 0.0,
+        "recall": round(tp / total_risk, 4) if total_risk else 0.0,
+        "f1": round(2 * tp / (2 * tp + fp + fn), 4) if (2 * tp + fp + fn) > 0 else 0.0,
         "false_positives": fp,
         "false_negatives": fn,
     }
