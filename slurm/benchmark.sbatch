@@ -45,16 +45,12 @@ trap cleanup EXIT INT TERM
 
 # ── Copy project + data to scratch ───────────────────────────────────────────
 echo "=== Copying project to scratch ==="
-rsync -a --exclude='.venv' --exclude='data/raw' \
+rsync -a --exclude='.venv' --exclude='data' \
     "$SUBMIT_DIR/" "$JOBSCRATCH/"
-
-echo "=== Copying eval dataset ==="
-mkdir -p "$JOBSCRATCH/data/processed"
-rsync -a "$SUBMIT_DIR/data/processed/" "$JOBSCRATCH/data/processed/"
 
 echo "=== Copying benchmark split ==="
 mkdir -p "$JOBSCRATCH/data/evaluation"
-rsync -a "$SUBMIT_DIR/data/evaluation/" "$JOBSCRATCH/data/evaluation/"
+rsync -a "$SUBMIT_DIR/data/evaluation/benchmark.jsonl" "$JOBSCRATCH/data/evaluation/"
 
 echo "=== Copying checkpoint: $CHECKPOINT ==="
 mkdir -p "$JOBSCRATCH/$(dirname "$CHECKPOINT")"
