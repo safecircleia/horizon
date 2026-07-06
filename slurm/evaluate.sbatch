@@ -47,7 +47,10 @@ rsync -a --exclude='.venv' --exclude='data' \
 
 echo "=== Copying eval dataset ==="
 mkdir -p "$JOBSCRATCH/data/processed"
-rsync -a "$SUBMIT_DIR/data/processed/eval.jsonl" "$JOBSCRATCH/data/processed/"
+rsync -a "$SUBMIT_DIR/data/processed/eval.jsonl" "$JOBSCRATCH/data/processed/" || {
+    echo "ERROR: data/processed/eval.jsonl not found — run the data pipeline first"
+    exit 1
+}
 
 echo "=== Copying checkpoint: $CHECKPOINT ==="
 mkdir -p "$JOBSCRATCH/$(dirname "$CHECKPOINT")"

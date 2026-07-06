@@ -50,7 +50,7 @@ rsync -a --exclude='.venv' --exclude='data' \
 
 echo "=== Copying benchmark split ==="
 mkdir -p "$JOBSCRATCH/data/evaluation"
-rsync -a "$SUBMIT_DIR/data/evaluation/benchmark.jsonl" "$JOBSCRATCH/data/evaluation/"
+rsync -a "$SUBMIT_DIR/data/evaluation/benchmark.jsonl" "$JOBSCRATCH/data/evaluation/" 2>/dev/null || true
 
 echo "=== Copying checkpoint: $CHECKPOINT ==="
 mkdir -p "$JOBSCRATCH/$(dirname "$CHECKPOINT")"

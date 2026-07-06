@@ -93,16 +93,23 @@ class JobActionsModal(ModalScreen[str]):
         self.job_state = job_state
 
     def compose(self) -> ComposeResult:
+        is_running = self.job_state in ("RUNNING", "PENDING", "COMPLETING")
         with Vertical(id="job-modal-box"):
             yield Static(f"[b]Job {self.job_id}[/b] — {self.job_name} [{self.job_state}]")
-            yield ListView(
+            items = [
                 ListItem(Label("  Live tail stdout"), id="act-live-stdout"),
                 ListItem(Label("  Live tail stderr"), id="act-live-stderr"),
                 ListItem(Label("  View stdout (snapshot)"), id="act-stdout"),
                 ListItem(Label("  View stderr (snapshot)"), id="act-stderr"),
                 ListItem(Label("  View both (stdout + stderr)"), id="act-both"),
-                ListItem(Label("  Close"), id="act-close"),
-            )
+            ]
+            if is_running:
+                items += [
+                    ListItem(Label("  ─────────────────────────"), id="act-sep"),
+                    ListItem(Label("  [red]Cancel job[/red]"), id="act-cancel"),
+                ]
+            items.append(ListItem(Label("  Close"), id="act-close"))
+            yield ListView(*items)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         self.dismiss(event.item.id or "act-close")
@@ -387,6 +394,10 @@ class HorizonApp(App):
                 self._focus_job(job.job_id, "stdout")
             elif action == "act-live-stderr":
                 self._focus_job(job.job_id, "stderr")
+            elif action == "act-cancel":
+                ok, msg = scancel(job.job_id)
+                self.notify(msg)
+                self._do_refresh()
             elif action == "act-stdout":
                 panel = self.query_one(ActionPanel)
                 self.query_one("#main-menu").display = False
@@ -434,6 +445,10 @@ class HorizonApp(App):
                 self._focus_job(job.job_id, "stdout")
             elif action == "act-live-stderr":
                 self._focus_job(job.job_id, "stderr")
+            elif action == "act-cancel":
+                ok, msg = scancel(job.job_id)
+                self.notify(msg)
+                self._do_refresh()
             elif action in ("act-stdout", "act-stderr", "act-both"):
                 panel = self.query_one(ActionPanel)
                 self.query_one("#main-menu").display = False
