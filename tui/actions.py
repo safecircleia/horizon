@@ -89,6 +89,14 @@ def load_latest_benchmark_report() -> dict | None:
         return json.load(f)
 
 
+def run_profile_mobile(model_path: str, runs: int = 10) -> tuple[bool, str]:
+    result = subprocess.run(
+        ["python", "-m", "evaluation.profile_mobile", "--model", model_path, "--runs", str(runs)],
+        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+    )
+    return result.returncode == 0, result.stdout + result.stderr
+
+
 # ── Test LiteRT-LM ──────────────────────────────────────────────────────────
 
 def submit_test_litert(model_path: str = None) -> tuple[bool, str]:

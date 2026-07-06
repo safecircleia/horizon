@@ -668,6 +668,7 @@ class HorizonApp(App):
             items.append(("bench-default", "Run benchmark (default checkpoint)"))
         items.append(("bench-create-split", "Create / refresh benchmark split"))
         items.append(("bench-view-report", "View last benchmark report"))
+        items.append(("bench-profile", "Profile mobile model (RAM / battery)"))
         panel.show_submenu("Run Accuracy Benchmark", items)
         self._bench_candidates = finals
 
@@ -770,22 +771,38 @@ class HorizonApp(App):
             ok, msg = actions.create_benchmark_split()
             self.notify("Benchmark split created" if ok else f"Failed: {msg[:60]}")
             panel.show_log(msg)
+        elif item_id == "bench-profile":
+            models_dir = actions.PROJECT_ROOT / "models"
+            litertlm_files = sorted(models_dir.rglob("*.litertlm")) if models_dir.exists() else []
+            if not litertlm_files:
+                panel.show_message("Profile Mobile", "No .litertlm models found in models/. Export the mobile model first.")
+            else:
+                model_path = str(litertlm_files[0])
+                self.notify(f"Profiling {litertlm_files[0].name}…")
+                ok, msg = actions.run_profile_mobile(model_path)
+                panel.show_log(msg)
         elif item_id == "bench-view-report":
             report = actions.load_latest_benchmark_report()
             if report is None:
                 panel.show_message("Benchmark Report", "No report found. Run a benchmark first.")
             else:
-                import json as _json
                 s = report.get("summary", {})
+                lat = report.get("latency", {})
                 lines = [
                     f"Checkpoint: {report.get('checkpoint', 'unknown')}",
                     "",
-                    f"  Recall:    {s.get('recall', 'N/A')}  [target ≥ 0.97]",
-                    f"  FPR:       {s.get('fpr', 'N/A')}  [target ≤ 0.03]",
-                    f"  Precision: {s.get('precision', 'N/A')}  [target ≥ 0.95]",
-                    f"  Weighted F1: {s.get('f1', 'N/A')}  [target ≥ 0.96]",
-                    f"  Macro F1:    {s.get('macro_f1', 'N/A')}",
+                    f"  Recall:     {s.get('recall', 'N/A')}  [target ≥ 0.97]",
+                    f"  FPR:        {s.get('fpr', 'N/A')}  [target ≤ 0.03]",
+                    f"  Precision:  {s.get('precision', 'N/A')}  [target ≥ 0.95]",
+                    f"  Binary F1:  {s.get('f1', 'N/A')}  [target ≥ 0.96]",
+                    f"  Macro F1:   {s.get('macro_f1', 'N/A')}",
+                    f"  Rule catch: {s.get('rule_catch_rate', 'N/A')}  [target ≥ 0.80]",
                 ]
+                if lat:
+                    lines += [
+                        "",
+                        f"  Latency  P50={lat.get('p50_ms', '?')}ms  P95={lat.get('p95_ms', '?')}ms  P99={lat.get('p99_ms', '?')}ms",
+                    ]
                 panel.show_submenu("Last Benchmark Report", [("bench-view-report", "Refresh")])
                 panel.show_log("\n".join(lines))
 
