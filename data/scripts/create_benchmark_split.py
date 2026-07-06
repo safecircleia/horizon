@@ -42,14 +42,19 @@ def main() -> None:
     with open(source) as f:
         all_examples = [json.loads(line) for line in f if line.strip()]
 
+    def _risk_level(ex: dict) -> str:
+        for msg in reversed(ex.get("messages", [])):
+            if msg["role"] == "assistant":
+                try:
+                    return json.loads(msg["content"]).get("risk_level", "none")
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        return "none"
+
     # Stratify by risk_level for a representative benchmark
     buckets: dict[str, list] = defaultdict(list)
     for ex in all_examples:
-        label = ex.get("label", {})
-        if isinstance(label, str):
-            label = json.loads(label)
-        level = label.get("risk_level", "none")
-        buckets[level].append(ex)
+        buckets[_risk_level(ex)].append(ex)
 
     rng = random.Random(args.seed)
     for bucket in buckets.values():
@@ -75,10 +80,7 @@ def main() -> None:
 
     by_level = defaultdict(int)
     for ex in selected:
-        label = ex.get("label", {})
-        if isinstance(label, str):
-            label = json.loads(label)
-        by_level[label.get("risk_level", "none")] += 1
+        by_level[_risk_level(ex)] += 1
 
     print(f"Wrote {len(selected)} examples to {out}")
     for level, count in sorted(by_level.items()):

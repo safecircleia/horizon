@@ -19,7 +19,6 @@ from evaluation.metrics.evaluate import (
     load_test_set,
     run_inference_batch,
     compute_metrics,
-    _extract_prompt,
     RISK_LEVELS,
     CATEGORIES,
 )
@@ -127,16 +126,12 @@ def main() -> None:
     model, tokenizer = load_for_inference(args.checkpoint)
     tokenizer.padding_side = "left"
 
-    # Detect which assistant tag this model uses so _extract_prompt works correctly
-    from evaluation.metrics.evaluate import ASSISTANT_TAG, GEMMA_ASSISTANT_TAG
     try:
         from peft import PeftConfig
         base_model = PeftConfig.from_pretrained(args.checkpoint).base_model_name_or_path
     except Exception:
         base_model = ""
-    is_gemma = "gemma" in base_model.lower()
-    expected_tag = GEMMA_ASSISTANT_TAG if is_gemma else ASSISTANT_TAG
-    print(f"  Base model: {base_model} ({'gemma' if is_gemma else 'llama'} template)")
+    print(f"  Base model: {base_model or '(unknown)'}")
 
     print(f"Loading benchmark set: {bench_path}")
     examples = load_test_set(str(bench_path))
@@ -144,34 +139,20 @@ def main() -> None:
         examples = examples[:args.max_samples]
     print(f"  {len(examples)} examples")
 
-    # Re-apply chat template if the stored text uses the wrong template for this model
-    needs_retemplating = False
-    if examples:
-        sample_text = examples[0].get("text", "")
-        if expected_tag not in sample_text:
-            needs_retemplating = True
-            print(f"  Re-applying chat template for {base_model}")
-
     for ex in examples:
-        if "messages" not in ex and "text" in ex:
-            # Already formatted text — re-template by extracting messages first if needed
-            pass
-        if needs_retemplating and "messages" in ex:
+        if "messages" in ex:
+            prompt_messages = [m for m in ex["messages"] if m["role"] != "assistant"]
             ex["text"] = tokenizer.apply_chat_template(
-                ex["messages"], tokenize=False, add_generation_prompt=False
+                prompt_messages, tokenize=False, add_generation_prompt=True
             )
-        elif "messages" in ex and "text" not in ex:
-            ex["text"] = tokenizer.apply_chat_template(
-                ex["messages"], tokenize=False, add_generation_prompt=False
-            )
-        if "label" not in ex and "messages" in ex:
-            for msg in reversed(ex["messages"]):
-                if msg["role"] == "assistant":
-                    try:
-                        ex["label"] = json.loads(msg["content"])
-                    except json.JSONDecodeError:
-                        ex["label"] = {"risk_level": "none", "categories": []}
-                    break
+            if "label" not in ex:
+                for msg in reversed(ex["messages"]):
+                    if msg["role"] == "assistant":
+                        try:
+                            ex["label"] = json.loads(msg["content"])
+                        except json.JSONDecodeError:
+                            ex["label"] = {"risk_level": "none", "categories": []}
+                        break
 
     y_true_levels, y_pred_levels = [], []
     y_true_cats, y_pred_cats = [], []
@@ -182,7 +163,7 @@ def main() -> None:
     print_every = max(1, len(batches) // 10)  # ~10 progress lines total
 
     for batch_idx, batch in enumerate(batches):
-        prompts = [_extract_prompt(ex["text"]) for ex in batch]
+        prompts = [ex["text"] for ex in batch]
         labels = []
         for ex in batch:
             label = ex["label"]
@@ -190,7 +171,7 @@ def main() -> None:
                 label = json.loads(label)
             labels.append(label)
 
-        predictions = run_inference_batch(model, tokenizer, prompts, args.batch_size)
+        predictions = run_inference_batch(model, tokenizer, prompts)
 
         for label, prediction in zip(labels, predictions):
             true_level = label.get("risk_level", "none")

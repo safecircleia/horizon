@@ -198,11 +198,11 @@ def main():
     if examples and "messages" in examples[0] and "text" not in examples[0]:
         print("Converting messages format to text...")
         for ex in examples:
+            prompt_messages = [m for m in ex["messages"] if m["role"] != "assistant"]
             ex["text"] = tokenizer.apply_chat_template(
-                ex["messages"], tokenize=False, add_generation_prompt=False
+                prompt_messages, tokenize=False, add_generation_prompt=True
             )
             if "label" not in ex:
-                # Extract label from assistant message content
                 for msg in reversed(ex["messages"]):
                     if msg["role"] == "assistant":
                         try:
