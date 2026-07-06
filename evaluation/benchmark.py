@@ -147,43 +147,46 @@ def main() -> None:
                             ex["label"] = {"risk_level": "none", "categories": []}
                         break
 
-    from tqdm import tqdm
-
     y_true_levels, y_pred_levels = [], []
     y_true_cats, y_pred_cats = [], []
     failures = 0
     batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
+    total = len(examples)
+    done = 0
+    print_every = max(1, len(batches) // 10)  # ~10 progress lines total
 
-    with tqdm(total=len(examples), unit="ex", desc="Benchmark") as pbar:
-        for batch in batches:
-            prompts = [_extract_prompt(ex["text"]) for ex in batch]
-            labels = []
-            for ex in batch:
-                label = ex["label"]
-                if isinstance(label, str):
-                    label = json.loads(label)
-                labels.append(label)
+    for batch_idx, batch in enumerate(batches):
+        prompts = [_extract_prompt(ex["text"]) for ex in batch]
+        labels = []
+        for ex in batch:
+            label = ex["label"]
+            if isinstance(label, str):
+                label = json.loads(label)
+            labels.append(label)
 
-            predictions = run_inference_batch(model, tokenizer, prompts, args.batch_size)
+        predictions = run_inference_batch(model, tokenizer, prompts, args.batch_size)
 
-            for label, prediction in zip(labels, predictions):
-                true_level = label.get("risk_level", "none")
-                true_cats = [c for c in label.get("categories", []) if c != "benign"]
-                if prediction is None:
-                    failures += 1
-                    pred_level, pred_cats = "none", []
-                else:
-                    pred_level = prediction.get("risk_level", "none")
-                    if pred_level not in RISK_LEVELS:
-                        pred_level = "none"
-                    pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
+        for label, prediction in zip(labels, predictions):
+            true_level = label.get("risk_level", "none")
+            true_cats = [c for c in label.get("categories", []) if c != "benign"]
+            if prediction is None:
+                failures += 1
+                pred_level, pred_cats = "none", []
+            else:
+                pred_level = prediction.get("risk_level", "none")
+                if pred_level not in RISK_LEVELS:
+                    pred_level = "none"
+                pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
 
-                y_true_levels.append(true_level)
-                y_pred_levels.append(pred_level)
-                y_true_cats.append(true_cats)
-                y_pred_cats.append(pred_cats)
+            y_true_levels.append(true_level)
+            y_pred_levels.append(pred_level)
+            y_true_cats.append(true_cats)
+            y_pred_cats.append(pred_cats)
 
-            pbar.update(len(batch))
+        done += len(batch)
+        if (batch_idx + 1) % print_every == 0 or done == total:
+            pct = done / total * 100
+            print(f"  [{done:4d}/{total}  {pct:5.1f}%]  failures so far: {failures}")
 
     if failures:
         print(f"Warning: {failures}/{len(examples)} inference failures")
