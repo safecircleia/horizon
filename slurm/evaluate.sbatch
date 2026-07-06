@@ -41,16 +41,20 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ── Copy project + checkpoint to scratch ─────────────────────────────────────
+echo "=== Copying project to scratch ==="
 rsync -a --exclude='.venv' --exclude='data/raw' \
     "$SUBMIT_DIR/" "$JOBSCRATCH/"
 
+echo "=== Copying eval dataset ==="
 mkdir -p "$JOBSCRATCH/data/processed"
 rsync -a "$SUBMIT_DIR/data/processed/" "$JOBSCRATCH/data/processed/"
 
+echo "=== Copying checkpoint: $CHECKPOINT ==="
 mkdir -p "$JOBSCRATCH/$(dirname "$CHECKPOINT")"
 rsync -a "$SUBMIT_DIR/$CHECKPOINT/" "$JOBSCRATCH/$CHECKPOINT/"
 
 # ── Environment ───────────────────────────────────────────────────────────────
+echo "=== Setting up environment ==="
 source "$JOBSCRATCH/slurm/install_env.sh"
 
 if [ -f "$SUBMIT_DIR/.env" ]; then
