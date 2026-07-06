@@ -42,7 +42,7 @@ def sbatch(script: str, export_vars: dict = None) -> tuple[bool, str]:
     cmd = ["sbatch"]
     if export_vars:
         export_str = ",".join(f"{k}={v}" for k, v in export_vars.items())
-        cmd += [f"--export={export_str}"]
+        cmd += [f"--export=ALL,{export_str}"]
     cmd.append(script)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0:
