@@ -103,6 +103,35 @@ PYEOF
 
 cd "$JOBSCRATCH"
 
+# Patch: transformers main has per-layer heterogeneous config for gemma4,
+# but litert-torch 0.9.1 accesses head_dim globally. Enable global access.
+python3 - <<'PYEOF'
+import sys, pathlib
+sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+p = sp / "litert_torch/generative/export_hf/core/export_lib.py"
+if not p.exists():
+    print(f"WARNING: {p} not found — patch skipped"); sys.exit(0)
+src = p.read_text()
+if "allow_global_per_layer_attribute_access" in src:
+    print("Config patch already applied"); sys.exit(0)
+# Insert after config is loaded (line: config = transformers.AutoConfig.from_pretrained(...))
+old = "config = transformers.AutoConfig.from_pretrained("
+if old not in src:
+    print("WARNING: couldn't find anchor for config patch"); sys.exit(0)
+# Find the full statement and add the flag after it
+import re
+# Match the full from_pretrained call (may span multiple lines, ends with closing paren + newline)
+match = re.search(r'(config = transformers\.AutoConfig\.from_pretrained\([^)]+\))', src)
+if not match:
+    print("WARNING: regex didn't match config load"); sys.exit(0)
+patch_line = "\n    if hasattr(config, 'allow_global_per_layer_attribute_access'):\n        config.allow_global_per_layer_attribute_access = True\n"
+src = src[:match.end()] + patch_line + src[match.end():]
+p.write_text(src)
+for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
+    c.unlink()
+print(f"Patched {p} — enabled allow_global_per_layer_attribute_access")
+PYEOF
+
 # ── Export ONLY the web variant ──────────────────────────────────────────────
 echo "=== Exporting Web (WebGPU) variant for horizon-edge-${MODEL_SIZE} ==="
 python -m training.scripts.export_edge \
