@@ -321,7 +321,7 @@ def main():
     )
     parser.add_argument(
         "--what", nargs="+", required=True,
-        choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "all"],
+        choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "edge-2b-web", "edge-4b-web", "all"],
     )
     parser.add_argument("--version", required=True, help="Semantic version (e.g. 2.1.0)")
     parser.add_argument("--skip-hf", action="store_true", help="Skip HuggingFace upload")
