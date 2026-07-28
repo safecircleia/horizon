@@ -105,27 +105,15 @@ cd "$JOBSCRATCH"
 
 # Patch: transformers main has per-layer heterogeneous config for gemma4,
 # but litert-torch 0.9.1 accesses head_dim globally. Enable global access.
-python3 - <<'PYEOF'
-import sys, pathlib
-sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-p = sp / "litert_torch/generative/export_hf/core/export_lib.py"
-if not p.exists():
-    print(f"WARNING: {p} not found — patch skipped"); sys.exit(0)
-src = p.read_text()
-if "allow_global_per_layer_attribute_access" in src:
-    print("Config patch already applied"); sys.exit(0)
-# Anchor: the line after config is fully loaded (2-space indent inside function)
-anchor = "config._attn_implementation = 'lrt_transposed_attention'"
-if anchor not in src:
-    print("WARNING: couldn't find anchor for config patch"); sys.exit(0)
-# Insert before the _attn_implementation line (same indent level: 2 spaces)
-patch = "  if hasattr(config, 'allow_global_per_layer_attribute_access'):\n    config.allow_global_per_layer_attribute_access = True\n  "
-src = src.replace(anchor, patch + anchor)
-p.write_text(src)
-for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
-    c.unlink()
-print(f"Patched {p} — enabled allow_global_per_layer_attribute_access")
-PYEOF
+# Use sed to insert a line after the _attn_implementation assignment.
+EXPORT_LIB=$(python3 -c "import litert_torch.generative.export_hf.core.export_lib as m; print(m.__file__)")
+if grep -q "allow_global_per_layer_attribute_access" "$EXPORT_LIB" 2>/dev/null; then
+    echo "Config patch already applied"
+else
+    sed -i "/config._attn_implementation = 'lrt_transposed_attention'/a\\  if hasattr(config, 'allow_global_per_layer_attribute_access'):\\n    config.allow_global_per_layer_attribute_access = True" "$EXPORT_LIB"
+    find "$(dirname "$EXPORT_LIB")/__pycache__" -name "export_lib.*.pyc" -delete 2>/dev/null || true
+    echo "Patched $EXPORT_LIB — enabled allow_global_per_layer_attribute_access"
+fi
 
 # ── Export ONLY the web variant ──────────────────────────────────────────────
 echo "=== Exporting Web (WebGPU) variant for horizon-edge-${MODEL_SIZE} ==="
