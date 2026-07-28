@@ -78,6 +78,7 @@ mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch + transformers from source (gemma4 support) ==="
 uv pip install --quiet litert-torch==0.9.1
+uv pip install --quiet --upgrade "huggingface_hub>=0.30"
 uv pip install --quiet --force-reinstall --no-deps "transformers @ git+https://github.com/huggingface/transformers.git"
 
 # Patch upstream bug: LiteRTLMCacheLayerForGemma4 missing get_max_length.
