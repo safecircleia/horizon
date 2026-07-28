@@ -75,6 +75,7 @@ mkdir -p "$HF_HOME"
 
 echo "=== Installing litert-torch + transformers 4.52 (gemma4 without heterogeneity) ==="
 uv pip install --quiet litert-torch==0.9.1
+uv pip install --quiet "tokenizers>=0.21,<0.22"
 uv pip install --quiet --force-reinstall --no-deps "transformers==4.52.*"
 
 # Patch upstream bug: LiteRTLMCacheLayerForGemma4 missing get_max_length.
