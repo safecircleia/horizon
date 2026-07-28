@@ -114,18 +114,13 @@ if not p.exists():
 src = p.read_text()
 if "allow_global_per_layer_attribute_access" in src:
     print("Config patch already applied"); sys.exit(0)
-# Insert after config is loaded (line: config = transformers.AutoConfig.from_pretrained(...))
-old = "config = transformers.AutoConfig.from_pretrained("
-if old not in src:
+# Anchor: the line after config is fully loaded (2-space indent inside function)
+anchor = "config._attn_implementation = 'lrt_transposed_attention'"
+if anchor not in src:
     print("WARNING: couldn't find anchor for config patch"); sys.exit(0)
-# Find the full statement and add the flag after it
-import re
-# Match the full from_pretrained call (may span multiple lines, ends with closing paren + newline)
-match = re.search(r'(config = transformers\.AutoConfig\.from_pretrained\([^)]+\))', src)
-if not match:
-    print("WARNING: regex didn't match config load"); sys.exit(0)
-patch_line = "\n    if hasattr(config, 'allow_global_per_layer_attribute_access'):\n        config.allow_global_per_layer_attribute_access = True\n"
-src = src[:match.end()] + patch_line + src[match.end():]
+# Insert before the _attn_implementation line (same indent level: 2 spaces)
+patch = "  if hasattr(config, 'allow_global_per_layer_attribute_access'):\n    config.allow_global_per_layer_attribute_access = True\n  "
+src = src.replace(anchor, patch + anchor)
 p.write_text(src)
 for c in (p.parent / "__pycache__").glob(f"{p.stem}.*.pyc"):
     c.unlink()
