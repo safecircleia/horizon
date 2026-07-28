@@ -52,14 +52,17 @@ def export_variant(model_dir: str, output_dir: str, model_size: str, suffix: str
     out_path.mkdir(parents=True, exist_ok=True)
 
     chat_template_repo = CHAT_TEMPLATE_REPO[model_size]
+    is_web = suffix == "-web"
 
     cmd = [
         "litert-torch", "export_hf",
         f"--model={model_dir}",
         f"--output_dir={out_path}",
-        "--externalize_embedder",
         f"--jinja_chat_template_override={chat_template_repo}",
     ]
+
+    if not is_web:
+        cmd.append("--externalize_embedder")
 
     if suffix:
         target = suffix.lstrip("_").lstrip("-")
