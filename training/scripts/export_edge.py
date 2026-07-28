@@ -62,9 +62,6 @@ def export_variant(model_dir: str, output_dir: str, model_size: str, suffix: str
         f"--jinja_chat_template_override={chat_template_repo}",
     ]
 
-    if is_web:
-        # Use int4 quantization for web to keep model under 2GB for streaming
-        cmd.append("--quantization_recipe=dynamic_int4_block128")
 
     if suffix:
         target = suffix.lstrip("_").lstrip("-")
