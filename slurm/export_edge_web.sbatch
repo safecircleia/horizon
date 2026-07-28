@@ -104,25 +104,25 @@ PYEOF
 cd "$JOBSCRATCH"
 
 # Patch: transformers main raises AmbiguousGlobalPerLayerAttributeError on
-# getattr(config, "head_dim") for gemma4. Patch the file directly by path.
-python3 - <<'PYEOF'
-import sys, pathlib
-sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
-p = sp / "transformers/integrations/heterogeneity/configuration_utils.py"
-if not p.exists():
-    print(f"WARNING: {p} not found — heterogeneity patch skipped"); sys.exit(0)
-src = p.read_text()
-if "LITERT_PATCH" in src:
-    print("Heterogeneity patch already applied"); sys.exit(0)
-old = "raise AmbiguousGlobalPerLayerAttributeError("
-if old not in src:
-    print("WARNING: could not find AmbiguousGlobalPerLayerAttributeError raise"); sys.exit(0)
-src = src.replace(old, "return super().__getattribute__(key)  # LITERT_PATCH\n                # " + old, 1)
-p.write_text(src)
-for c in p.parent.joinpath("__pycache__").glob("*.pyc"):
-    c.unlink()
-print(f"Patched {p} — disabled AmbiguousGlobalPerLayerAttributeError")
-PYEOF
+# getattr(config, "head_dim") for gemma4. Replace the raise with a return.
+HETERO_FILE=$(python3 -c "
+import pathlib, sys
+sp = pathlib.Path(sys.prefix) / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages'
+p = sp / 'transformers/integrations/heterogeneity/configuration_utils.py'
+print(p) if p.exists() else sys.exit(1)
+" 2>/dev/null) || true
+if [ -n "$HETERO_FILE" ]; then
+    if grep -q "LITERT_PATCH" "$HETERO_FILE"; then
+        echo "Heterogeneity patch already applied"
+    else
+        # Replace the raise line and its continuation with a simple return
+        sed -i '/raise AmbiguousGlobalPerLayerAttributeError(/,/^[[:space:]]*)/c\                return super().__getattribute__(key)  # LITERT_PATCH' "$HETERO_FILE"
+        find "$(dirname "$HETERO_FILE")/__pycache__" -name "*.pyc" -delete 2>/dev/null || true
+        echo "Patched $HETERO_FILE"
+    fi
+else
+    echo "WARNING: heterogeneity configuration_utils.py not found — patch skipped"
+fi
 
 # ── Export ONLY the web variant ──────────────────────────────────────────────
 echo "=== Exporting Web (WebGPU) variant for horizon-edge-${MODEL_SIZE} ==="
