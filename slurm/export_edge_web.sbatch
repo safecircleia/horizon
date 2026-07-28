@@ -104,35 +104,24 @@ PYEOF
 cd "$JOBSCRATCH"
 
 # Patch: transformers main raises AmbiguousGlobalPerLayerAttributeError on
-# getattr(config, "head_dim") for gemma4. Set the flag on the Gemma4Config
-# class itself so ALL config instances allow global access.
+# getattr(config, "head_dim") for gemma4. Patch the file directly by path.
 python3 - <<'PYEOF'
-import importlib, sys, pathlib
-try:
-    import transformers
-    cfg_utils = pathlib.Path(transformers.integrations.heterogeneity.configuration_utils.__file__)
-    src = cfg_utils.read_text()
-    if "LITERT_PATCH" not in src:
-        # Patch: make allow_global_per_layer_attribute_access default to True
-        old = "raise AmbiguousGlobalPerLayerAttributeError("
-        new = "return super().__getattribute__(key)  # LITERT_PATCH: allow global access\n            raise AmbiguousGlobalPerLayerAttributeError("
-        if old in src:
-            # Just comment out the raise entirely by returning before it
-            src = src.replace(
-                old,
-                "return super().__getattribute__(key)  # LITERT_PATCH\n                # " + old,
-                1
-            )
-            cfg_utils.write_text(src)
-            for c in cfg_utils.parent.joinpath("__pycache__").glob("*.pyc"):
-                c.unlink()
-            print(f"Patched {cfg_utils} — disabled AmbiguousGlobalPerLayerAttributeError")
-        else:
-            print("WARNING: could not find raise statement to patch")
-    else:
-        print("Heterogeneity patch already applied")
-except Exception as e:
-    print(f"WARNING: heterogeneity patch failed: {e}")
+import sys, pathlib
+sp = pathlib.Path(sys.prefix) / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+p = sp / "transformers/integrations/heterogeneity/configuration_utils.py"
+if not p.exists():
+    print(f"WARNING: {p} not found — heterogeneity patch skipped"); sys.exit(0)
+src = p.read_text()
+if "LITERT_PATCH" in src:
+    print("Heterogeneity patch already applied"); sys.exit(0)
+old = "raise AmbiguousGlobalPerLayerAttributeError("
+if old not in src:
+    print("WARNING: could not find AmbiguousGlobalPerLayerAttributeError raise"); sys.exit(0)
+src = src.replace(old, "return super().__getattribute__(key)  # LITERT_PATCH\n                # " + old, 1)
+p.write_text(src)
+for c in p.parent.joinpath("__pycache__").glob("*.pyc"):
+    c.unlink()
+print(f"Patched {p} — disabled AmbiguousGlobalPerLayerAttributeError")
 PYEOF
 
 # ── Export ONLY the web variant ──────────────────────────────────────────────
