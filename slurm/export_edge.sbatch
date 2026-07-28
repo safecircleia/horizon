@@ -76,9 +76,9 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 export PYTHONUNBUFFERED=1
 mkdir -p "$HF_HOME"
 
-echo "=== Installing litert-torch + latest transformers ==="
+echo "=== Installing litert-torch + transformers from source (gemma4 support) ==="
 uv pip install --quiet litert-torch==0.9.1
-uv pip install --quiet "transformers>=4.52"
+uv pip install --quiet --force-reinstall --no-deps "transformers @ git+https://github.com/huggingface/transformers.git"
 
 # Patch upstream bug: LiteRTLMCacheLayerForGemma4 missing get_max_length.
 # Append monkey-patch to the gemma4 cache module — no anchor text needed.
