@@ -103,25 +103,47 @@ PYEOF
 
 cd "$JOBSCRATCH"
 
-# Patch: transformers main raises AmbiguousGlobalPerLayerAttributeError on
-# getattr(config, "head_dim") for gemma4. Replace the raise with a return.
-HETERO_FILE=$(python3 -c "
+# Patch: litert-torch cache.py uses getattr(config, "head_dim", None) which
+# raises AmbiguousGlobalPerLayerAttributeError in transformers main.
+# Fix: patch cache.py to wrap the getattr in a try/except.
+CACHE_FILE=$(python3 -c "
 import pathlib, sys
 sp = pathlib.Path(sys.prefix) / 'lib' / f'python{sys.version_info.major}.{sys.version_info.minor}' / 'site-packages'
-p = sp / 'transformers/integrations/heterogeneity/configuration_utils.py'
+p = sp / 'litert_torch/generative/export_hf/model_ext/gemma4/cache.py'
 print(p) if p.exists() else sys.exit(1)
 " 2>/dev/null) || true
-if [ -n "$HETERO_FILE" ]; then
-    if grep -q "LITERT_PATCH" "$HETERO_FILE"; then
-        echo "Heterogeneity patch already applied"
+if [ -n "$CACHE_FILE" ]; then
+    if grep -q "LITERT_HEAD_DIM_PATCH" "$CACHE_FILE"; then
+        echo "cache.py head_dim patch already applied"
     else
-        # Replace the raise line and its continuation with a simple return
-        sed -i '/raise AmbiguousGlobalPerLayerAttributeError(/,/^[[:space:]]*)/c\                return super().__getattribute__(key)  # LITERT_PATCH' "$HETERO_FILE"
-        find "$(dirname "$HETERO_FILE")/__pycache__" -name "*.pyc" -delete 2>/dev/null || true
-        echo "Patched $HETERO_FILE"
+        # Replace the problematic getattr line with a try/except block
+        python3 - "$CACHE_FILE" <<'PYEOF'
+import sys
+p = sys.argv[1]
+with open(p) as f:
+    src = f.read()
+old = '    embed_size_per_head = (\n        getattr(model_config, "head_dim", None)\n        or model_config.hidden_size // model_config.num_attention_heads\n    )'
+new = '''    # LITERT_HEAD_DIM_PATCH: handle heterogeneous config
+    try:
+        _head_dim = getattr(model_config, "head_dim", None)
+    except Exception:
+        _head_dim = None
+    embed_size_per_head = (
+        _head_dim
+        or model_config.hidden_size // model_config.num_attention_heads
+    )'''
+if old in src:
+    src = src.replace(old, new)
+    with open(p, 'w') as f:
+        f.write(src)
+    print(f"Patched {p} — head_dim try/except")
+else:
+    print(f"WARNING: could not find anchor in {p}")
+PYEOF
+        find "$(dirname "$CACHE_FILE")/__pycache__" -name "*.pyc" -delete 2>/dev/null || true
     fi
 else
-    echo "WARNING: heterogeneity configuration_utils.py not found — patch skipped"
+    echo "WARNING: gemma4 cache.py not found — patch skipped"
 fi
 
 # ── Export ONLY the web variant ──────────────────────────────────────────────
