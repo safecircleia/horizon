@@ -103,17 +103,37 @@ PYEOF
 
 cd "$JOBSCRATCH"
 
-# Patch: transformers main has per-layer heterogeneous config for gemma4,
-# but litert-torch 0.9.1 accesses head_dim globally. Enable global access.
-# Use sed to insert a line after the _attn_implementation assignment.
-EXPORT_LIB=$(python3 -c "import litert_torch.generative.export_hf.core.export_lib as m; print(m.__file__)")
-if grep -q "allow_global_per_layer_attribute_access" "$EXPORT_LIB" 2>/dev/null; then
-    echo "Config patch already applied"
-else
-    sed -i "/config._attn_implementation = 'lrt_transposed_attention'/a\\  if hasattr(config, 'allow_global_per_layer_attribute_access'):\\n    config.allow_global_per_layer_attribute_access = True" "$EXPORT_LIB"
-    find "$(dirname "$EXPORT_LIB")/__pycache__" -name "export_lib.*.pyc" -delete 2>/dev/null || true
-    echo "Patched $EXPORT_LIB — enabled allow_global_per_layer_attribute_access"
-fi
+# Patch: transformers main raises AmbiguousGlobalPerLayerAttributeError on
+# getattr(config, "head_dim") for gemma4. Set the flag on the Gemma4Config
+# class itself so ALL config instances allow global access.
+python3 - <<'PYEOF'
+import importlib, sys, pathlib
+try:
+    import transformers
+    cfg_utils = pathlib.Path(transformers.integrations.heterogeneity.configuration_utils.__file__)
+    src = cfg_utils.read_text()
+    if "LITERT_PATCH" not in src:
+        # Patch: make allow_global_per_layer_attribute_access default to True
+        old = "raise AmbiguousGlobalPerLayerAttributeError("
+        new = "return super().__getattribute__(key)  # LITERT_PATCH: allow global access\n            raise AmbiguousGlobalPerLayerAttributeError("
+        if old in src:
+            # Just comment out the raise entirely by returning before it
+            src = src.replace(
+                old,
+                "return super().__getattribute__(key)  # LITERT_PATCH\n                # " + old,
+                1
+            )
+            cfg_utils.write_text(src)
+            for c in cfg_utils.parent.joinpath("__pycache__").glob("*.pyc"):
+                c.unlink()
+            print(f"Patched {cfg_utils} — disabled AmbiguousGlobalPerLayerAttributeError")
+        else:
+            print("WARNING: could not find raise statement to patch")
+    else:
+        print("Heterogeneity patch already applied")
+except Exception as e:
+    print(f"WARNING: heterogeneity patch failed: {e}")
+PYEOF
 
 # ── Export ONLY the web variant ──────────────────────────────────────────────
 echo "=== Exporting Web (WebGPU) variant for horizon-edge-${MODEL_SIZE} ==="
