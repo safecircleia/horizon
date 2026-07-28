@@ -49,9 +49,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ── Copy project + merged model to scratch ────────────────────────────────────
-echo "=== Copying project to scratch ==="
-rsync -a --exclude='.venv' --exclude='data' --exclude='experiments' \
+# ── Copy only what's needed to scratch ────────────────────────────────────────
+echo "=== Copying project (minimal) to scratch ==="
+mkdir -p "$JOBSCRATCH"
+rsync -a \
+    --exclude='.venv' --exclude='data' --exclude='experiments' \
+    --exclude='models' --exclude='notebooks' --exclude='.git' \
+    --exclude='.codegraph' --exclude='.serena' --exclude='.playwright-mcp' \
     "$SUBMIT_DIR/" "$JOBSCRATCH/"
 
 echo "=== Copying merged model ($MODEL_DIR) ==="
@@ -69,8 +73,9 @@ export HF_HOME="$JOBSCRATCH/.cache/huggingface"
 export PYTHONUNBUFFERED=1
 mkdir -p "$HF_HOME"
 
-echo "=== Installing litert-torch ==="
+echo "=== Installing litert-torch + latest transformers ==="
 uv pip install --quiet litert-torch==0.9.1
+uv pip install --quiet "transformers>=4.52"
 
 # Patch upstream bug: LiteRTLMCacheLayerForGemma4 missing get_max_length.
 python3 - <<'PYEOF'
