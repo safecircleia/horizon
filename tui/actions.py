@@ -46,6 +46,13 @@ def submit_export_edge(model_size: str) -> tuple[bool, str]:
     )
 
 
+def submit_export_edge_web(model_size: str) -> tuple[bool, str]:
+    return sbatch(
+        str(PROJECT_ROOT / "slurm/export_edge_web.sbatch"),
+        export_vars={"MODEL_SIZE": model_size},
+    )
+
+
 def submit_export_mobile(checkpoint: str) -> tuple[bool, str]:
     return sbatch(
         str(PROJECT_ROOT / "slurm/export_litert.sbatch"),

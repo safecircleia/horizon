@@ -70,6 +70,16 @@ MODELS = {
         "local_dir": "models/horizon-edge-4b-litert",
         "patterns": ["*.litertlm"],
     },
+    "edge-2b-web": {
+        "hf_repo": f"{ORG}/horizon-edge-2b",
+        "local_dir": "models/horizon-edge-2b-litert",
+        "patterns": ["*-web.litertlm"],
+    },
+    "edge-4b-web": {
+        "hf_repo": f"{ORG}/horizon-edge-4b",
+        "local_dir": "models/horizon-edge-4b-litert",
+        "patterns": ["*-web.litertlm"],
+    },
 }
 
 

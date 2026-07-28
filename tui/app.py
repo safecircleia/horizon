@@ -593,8 +593,10 @@ class HorizonApp(App):
 
     def _show_export(self, panel: ActionPanel) -> None:
         items = [
-            ("export-e2b", "Edge 2B (Gemma 4 E2B)"),
-            ("export-e4b", "Edge 4B (Gemma 4 E4B)"),
+            ("export-e2b", "Edge 2B — all variants"),
+            ("export-e4b", "Edge 4B — all variants"),
+            ("export-e2b-web", "Edge 2B — Web (WebGPU) only"),
+            ("export-e4b-web", "Edge 4B — Web (WebGPU) only"),
             ("export-mobile", "Mobile (Gemma 3 1B)"),
         ]
         panel.show_submenu("Export to LiteRT-LM", items)
@@ -622,8 +624,10 @@ class HorizonApp(App):
 
     def _show_upload(self, panel: ActionPanel) -> None:
         items = [
-            ("upload-edge-2b", "edge-2b"),
-            ("upload-edge-4b", "edge-4b"),
+            ("upload-edge-2b", "edge-2b (all variants)"),
+            ("upload-edge-4b", "edge-4b (all variants)"),
+            ("upload-edge-2b-web", "edge-2b-web (WebGPU only)"),
+            ("upload-edge-4b-web", "edge-4b-web (WebGPU only)"),
             ("upload-mobile", "mobile"),
             ("upload-full", "full"),
             ("upload-gguf", "gguf"),
@@ -736,6 +740,12 @@ class HorizonApp(App):
         elif item_id == "export-e4b":
             ok, msg = actions.submit_export_edge("e4b")
             self._submit_and_offer_focus(ok, msg, "export edge-4b")
+        elif item_id == "export-e2b-web":
+            ok, msg = actions.submit_export_edge_web("e2b")
+            self._submit_and_offer_focus(ok, msg, "export edge-2b web")
+        elif item_id == "export-e4b-web":
+            ok, msg = actions.submit_export_edge_web("e4b")
+            self._submit_and_offer_focus(ok, msg, "export edge-4b web")
         elif item_id == "export-mobile":
             panel.show_message("Export Mobile", "Use: sbatch --export=CHECKPOINT=... slurm/export_litert.sbatch")
 
