@@ -1,0 +1,72 @@
+#!/bin/bash
+#SBATCH --job-name=benchmark_mobile
+#SBATCH --output=/slurm/home/jtpalma/output/%j/stdout.log
+#SBATCH --error=/slurm/home/jtpalma/output/%j/stderr.log
+#SBATCH --partition=cpu
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
+#SBATCH --time=02:00:00
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=jtpalma@safecircle.tech
+
+# ---------------------------------------------------------------------------
+# Mobile model benchmark (issue #8 targets)
+#
+# Env vars:
+#   MODEL_PATH  — path to .litertlm file (required)
+#   TEST_SET    — path to eval JSONL (default: data/processed/eval.jsonl)
+#   MAX_SAMPLES — limit examples (default: all)
+#   SAVE_BASELINE — set to "1" to save as new baseline
+#   TDP_MW      — device TDP in milliwatts (default: 3000)
+# ---------------------------------------------------------------------------
+
+set -euo pipefail
+
+REPO="/slurm/home/jtpalma/safecircle/horizon"
+SCRATCH="${SLURM_TMPDIR:-/tmp}/horizon-$$"
+
+# Copy project to fast scratch
+echo "Copying project to scratch: $SCRATCH"
+mkdir -p "$SCRATCH"
+rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' "$REPO/" "$SCRATCH/"
+
+# Sync results back on exit
+cleanup() {
+    echo "Syncing results back to repo..."
+    rsync -a "$SCRATCH/evaluation/reports/" "$REPO/evaluation/reports/" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+cd "$SCRATCH"
+
+# Activate environment
+source slurm/install_env.sh
+source .env 2>/dev/null || true
+
+# Defaults
+MODEL_PATH="${MODEL_PATH:?ERROR: MODEL_PATH must be set}"
+TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
+
+# Build command
+CMD="python -m evaluation.benchmark_mobile --model $MODEL_PATH --test-set $TEST_SET"
+
+if [ -n "${MAX_SAMPLES:-}" ]; then
+    CMD="$CMD --max-samples $MAX_SAMPLES"
+fi
+
+if [ -n "${TDP_MW:-}" ]; then
+    CMD="$CMD --tdp-mw $TDP_MW"
+fi
+
+if [ "${SAVE_BASELINE:-}" = "1" ]; then
+    CMD="$CMD --save-baseline"
+fi
+
+echo "Running: $CMD"
+echo "=========================================="
+eval "$CMD" 2>&1 | tee "$SCRATCH/evaluation/reports/benchmark_mobile/run.log"
+exit_code=${PIPESTATUS[0]}
+
+echo "=========================================="
+echo "Benchmark exited with code: $exit_code"
+exit "$exit_code"
