@@ -10,6 +10,15 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 # Ensure ~/.local/bin is in PATH (uv lives there on ANTS)
 export PATH="$HOME/.local/bin:$PATH"
 
+# ── CUDA setup ────────────────────────────────────────────────────────────────
+# ANTS GPU nodes have CUDA at /usr/local/cuda but don't set LD_LIBRARY_PATH
+# in non-interactive SLURM sessions, causing driver/library mismatches.
+if [ -d /usr/local/cuda ]; then
+    export CUDA_HOME="/usr/local/cuda"
+    export PATH="$CUDA_HOME/bin:$PATH"
+    export LD_LIBRARY_PATH="${CUDA_HOME}/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
 echo "CUDA: $(nvcc --version 2>/dev/null | head -1 || echo 'not found via nvcc')"
 echo "Python: $(python3 --version)"
 
