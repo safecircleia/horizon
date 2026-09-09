@@ -7,6 +7,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Ensure ~/.local/bin is in PATH (uv lives there on ANTS)
+export PATH="$HOME/.local/bin:$PATH"
+
 echo "CUDA: $(nvcc --version 2>/dev/null | head -1 || echo 'not found via nvcc')"
 echo "Python: $(python3 --version)"
 
@@ -15,7 +18,7 @@ VENV="$PROJECT_ROOT/.venv"
 
 if [ ! -f "$VENV/bin/activate" ]; then
     echo "Creating venv at $VENV..."
-    python3.11 -m venv "$VENV"
+    python3 -m venv "$VENV"
 fi
 
 # shellcheck disable=SC1091
