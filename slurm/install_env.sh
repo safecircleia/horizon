@@ -20,14 +20,25 @@ if [ -d /usr/local/cuda ]; then
 fi
 
 echo "CUDA: $(nvcc --version 2>/dev/null | head -1 || echo 'not found via nvcc')"
-echo "Python: $(python3 --version)"
+
+# ── Pick Python ≤3.13 (TensorFlow / litert-torch need it) ────────────────────
+# ANTS defaults to python3 → 3.14, but many ML wheels cap at 3.13.
+PYTHON_BIN=""
+for candidate in python3.13 python3.12 python3.11 python3.10; do
+    if command -v "$candidate" &>/dev/null; then
+        PYTHON_BIN="$candidate"
+        break
+    fi
+done
+PYTHON_BIN="${PYTHON_BIN:-python3}"   # last resort
+echo "Python: $($PYTHON_BIN --version)"
 
 # ── Virtual environment ───────────────────────────────────────────────────────
 VENV="$PROJECT_ROOT/.venv"
 
 if [ ! -f "$VENV/bin/activate" ]; then
     echo "Creating venv at $VENV..."
-    python3 -m venv "$VENV"
+    "$PYTHON_BIN" -m venv "$VENV"
 fi
 
 # shellcheck disable=SC1091
