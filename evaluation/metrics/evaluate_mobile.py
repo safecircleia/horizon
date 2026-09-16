@@ -53,7 +53,7 @@ def _build_prompt(conversation_text: str) -> str:
 
 def _run_litert(model_path: str, prompt: str, timeout: int = 120) -> str | None:
     """Run a single litert-lm inference and return the raw stdout text."""
-    cmd = ["uvx", "litert-lm", "run", "--model", model_path, "--prompt", prompt]
+    cmd = ["uvx", "litert-lm", "run", model_path, "--prompt", prompt]
     try:
         result = subprocess.run(
             cmd,

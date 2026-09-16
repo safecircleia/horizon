@@ -58,7 +58,7 @@ _DEFAULT_PROMPT = (
 
 def _run_litert(model_path: str, prompt: str) -> tuple[float, float, float]:
     """Run one litert-lm inference and return (wall_s, peak_rss_mb, cpu_pct)."""
-    cmd = ["uvx", "litert-lm", "run", "--model", model_path, "--prompt", prompt]
+    cmd = ["uvx", "litert-lm", "run", model_path, "--prompt", prompt]
 
     t0 = time.perf_counter()
     proc = subprocess.Popen(
