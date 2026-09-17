@@ -48,6 +48,8 @@ if [ -n "${MAX_SAMPLES:-}" ]; then
     CMD="$CMD --max-samples $MAX_SAMPLES"
 fi
 
+mkdir -p "$SCRATCH/evaluation/reports/mobile"
+
 echo "Running: $CMD"
 echo "=========================================="
 eval "$CMD" 2>&1 | tee "$SCRATCH/evaluation/reports/mobile/run.log"

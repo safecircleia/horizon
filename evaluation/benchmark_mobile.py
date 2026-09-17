@@ -40,7 +40,7 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from tqdm import tqdm
 
 from evaluation.rules import compute_rule_catch_rate, rule_based_detect
-from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS
+from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS, SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Issue #8 targets
@@ -79,6 +79,7 @@ _DEFAULT_TDP_MW = 3000.0  # mid-range mobile SoC
 def _build_prompt(conversation: str) -> str:
     return (
         f"<start_of_turn>user\n"
+        f"{SYSTEM_PROMPT}\n\n"
         f"Analyze this conversation:\n{conversation}<end_of_turn>\n"
         f"<start_of_turn>model\n"
     )

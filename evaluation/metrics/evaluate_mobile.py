@@ -43,9 +43,13 @@ _RISK_CATS = [c for c in RISK_CATEGORIES if c != "benign"]
 
 
 def _build_prompt(conversation_text: str) -> str:
-    """Wrap raw conversation text in the Gemma chat template used at training time."""
+    """Wrap raw conversation text in the Gemma chat template used at training time.
+
+    Includes the system prompt so the model knows to respond with JSON.
+    """
     return (
         f"<start_of_turn>user\n"
+        f"{SYSTEM_PROMPT}\n\n"
         f"Analyze this conversation:\n{conversation_text}<end_of_turn>\n"
         f"<start_of_turn>model\n"
     )
