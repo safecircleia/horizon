@@ -2,7 +2,8 @@
 #SBATCH --job-name=benchmark_mobile
 #SBATCH --output=/slurm/home/jtpalma/output/%j/stdout.log
 #SBATCH --error=/slurm/home/jtpalma/output/%j/stderr.log
-#SBATCH --partition=cpu
+#SBATCH --partition=gpuMin
+#SBATCH --gres=gpu:nvidia_l4:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
 #SBATCH --time=02:00:00

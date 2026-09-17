@@ -7,7 +7,8 @@
 #   sbatch --export=ALL,MODEL_PATH=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm,RUNS=20 slurm/profile_mobile.sbatch
 
 #SBATCH --job-name=horizon-profile
-#SBATCH --partition=cpu
+#SBATCH --partition=gpuMin
+#SBATCH --gres=gpu:nvidia_l4:1
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
