@@ -31,6 +31,7 @@ rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' "$REPO/" "$
 cleanup() {
     echo "Syncing results back to repo..."
     rsync -a "$SCRATCH/evaluation/reports/" "$REPO/evaluation/reports/" 2>/dev/null || true
+    rm -rf "$SCRATCH"
 }
 trap cleanup EXIT INT TERM
 
