@@ -14,7 +14,6 @@ Prerequisites:
 """
 
 import argparse
-import os
 from pathlib import Path
 
 from huggingface_hub import HfApi, create_repo
@@ -761,10 +760,13 @@ For the smaller 2B variant, see [safecircleai/horizon-edge-2b](https://huggingfa
 
 # ── Upload functions ──────────────────────────────────────────────────────────
 
+
 def upload_cards_and_assets(api: HfApi):
     """Push updated model cards, license, and eval charts to all three repos."""
     license_path = Path(__file__).parent.parent / "LICENSE-SAFECIRCLE.md"
-    eval_chart = Path(__file__).parent.parent / "evaluation/reports/latest/eval_report.png"
+    eval_chart = (
+        Path(__file__).parent.parent / "evaluation/reports/latest/eval_report.png"
+    )
 
     updates = [
         (FULL_REPO, FULL_MODEL_CARD),
@@ -877,7 +879,9 @@ def upload_mobile_model(api: HfApi, mobile_standard_dir: str, mobile_lite_dir: s
         if not p.exists():
             print(f"  Warning: {label} dir not found: {dir_path}")
             continue
-        files = sorted(f for f in p.iterdir() if f.is_file() and f.suffix == ".litertlm")
+        files = sorted(
+            f for f in p.iterdir() if f.is_file() and f.suffix == ".litertlm"
+        )
         if not files:
             print(f"  Warning: no .litertlm files found in {dir_path}")
             continue
@@ -910,7 +914,7 @@ def upload_edge_model(api: HfApi, repo: str, card: str, model_dir: str, label: s
     litertlm_files = sorted(model_path.glob("*.litertlm"))
     if not litertlm_files:
         print(f"  WARNING: no .litertlm files found in {model_dir}")
-        print(f"  Run first: sbatch --export=MODEL_SIZE=... slurm/export_edge.sbatch")
+        print("  Run first: sbatch --export=MODEL_SIZE=... slurm/export_edge.sbatch")
         return
 
     for f in litertlm_files:
@@ -929,7 +933,11 @@ def upload_edge_model(api: HfApi, repo: str, card: str, model_dir: str, label: s
 
 def main():
     parser = argparse.ArgumentParser(description="Upload Horizon models to HuggingFace")
-    parser.add_argument("--what", choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "cards", "all"], default="all")
+    parser.add_argument(
+        "--what",
+        choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "cards", "all"],
+        default="all",
+    )
     parser.add_argument("--full-model-dir", default="models/horizon-full-merged")
     parser.add_argument("--gguf-dir", default="models/horizon-full-gguf")
     parser.add_argument("--mobile-standard-dir", default="models/mobile-standard")
@@ -950,12 +958,18 @@ def main():
     if args.what in ("full", "all"):
         if not Path(args.full_model_dir).exists():
             print(f"Full model not found at {args.full_model_dir}")
-            print("Run first: python scripts/merge_lora.py --checkpoint experiments/h100-20260514-134855/final")
+            print(
+                "Run first: python scripts/merge_lora.py --checkpoint experiments/h100-20260514-134855/final"
+            )
         else:
             upload_full_model(api, args.full_model_dir)
 
     if args.what in ("gguf", "all"):
-        if not list(Path(args.gguf_dir).glob("*.gguf")) if Path(args.gguf_dir).exists() else True:
+        if (
+            not list(Path(args.gguf_dir).glob("*.gguf"))
+            if Path(args.gguf_dir).exists()
+            else True
+        ):
             print(f"No GGUF files found in {args.gguf_dir}")
             print("Run first: bash scripts/export_gguf.sh")
         else:
@@ -969,14 +983,26 @@ def main():
             print(f"Edge 2B LiteRT-LM models not found at {args.edge_2b_dir}")
             print("Run first: sbatch --export=MODEL_SIZE=e2b slurm/export_edge.sbatch")
         else:
-            upload_edge_model(api, EDGE_2B_REPO, EDGE_2B_MODEL_CARD, args.edge_2b_dir, "Horizon Edge 2B")
+            upload_edge_model(
+                api,
+                EDGE_2B_REPO,
+                EDGE_2B_MODEL_CARD,
+                args.edge_2b_dir,
+                "Horizon Edge 2B",
+            )
 
     if args.what in ("edge-4b", "all"):
         if not Path(args.edge_4b_dir).exists():
             print(f"Edge 4B LiteRT-LM models not found at {args.edge_4b_dir}")
             print("Run first: sbatch --export=MODEL_SIZE=e4b slurm/export_edge.sbatch")
         else:
-            upload_edge_model(api, EDGE_4B_REPO, EDGE_4B_MODEL_CARD, args.edge_4b_dir, "Horizon Edge 4B")
+            upload_edge_model(
+                api,
+                EDGE_4B_REPO,
+                EDGE_4B_MODEL_CARD,
+                args.edge_4b_dir,
+                "Horizon Edge 4B",
+            )
 
     if args.what in ("cards", "all"):
         upload_cards_and_assets(api)

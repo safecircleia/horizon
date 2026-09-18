@@ -1,8 +1,9 @@
 """OpenAI GPT-based conversation generator."""
 
 import os
-from typing import Optional
+
 import openai
+
 from data.generation.generators.base import ConversationGenerator, GenerationResult
 from data.generation.prompts.base import ConversationPrompt
 
@@ -12,10 +13,10 @@ class GPTGenerator(ConversationGenerator):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "gpt-4o-2024-08-06",
         temperature: float = 0.9,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
     ):
         """Initialize GPT generator.
 
@@ -47,9 +48,9 @@ class GPTGenerator(ConversationGenerator):
                 max_tokens=self.max_tokens,
                 messages=[
                     {"role": "system", "content": prompt.system_prompt},
-                    {"role": "user", "content": prompt.user_prompt}
+                    {"role": "user", "content": prompt.user_prompt},
                 ],
-                response_format={"type": "json_object"}  # Force JSON output
+                response_format={"type": "json_object"},  # Force JSON output
             )
 
             # Extract text from response
@@ -63,7 +64,7 @@ class GPTGenerator(ConversationGenerator):
                     success=False,
                     conversation=None,
                     raw_response=response_text,
-                    error="Failed to parse JSON from response"
+                    error="Failed to parse JSON from response",
                 )
 
             # Validate required fields
@@ -72,14 +73,14 @@ class GPTGenerator(ConversationGenerator):
                     success=False,
                     conversation=None,
                     raw_response=response_text,
-                    error="Response missing 'messages' field"
+                    error="Response missing 'messages' field",
                 )
 
             return GenerationResult(
                 success=True,
                 conversation=conversation,
                 raw_response=response_text,
-                error=None
+                error=None,
             )
 
         except Exception as e:
@@ -87,5 +88,5 @@ class GPTGenerator(ConversationGenerator):
                 success=False,
                 conversation=None,
                 raw_response="",
-                error=f"API Error: {str(e)}"
+                error=f"API Error: {str(e)}",
             )

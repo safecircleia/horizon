@@ -2,17 +2,19 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any
+
 from data.generation.prompts.base import ConversationPrompt
 
 
 @dataclass
 class GenerationResult:
     """Result from a conversation generation attempt."""
+
     success: bool
-    conversation: Optional[Dict[str, Any]]
+    conversation: dict[str, Any] | None
     raw_response: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class ConversationGenerator(ABC):
@@ -36,7 +38,7 @@ class ConversationGenerator(ABC):
         """
         pass
 
-    def _parse_json_response(self, response: str) -> Optional[Dict[str, Any]]:
+    def _parse_json_response(self, response: str) -> dict[str, Any] | None:
         """Parse JSON from LLM response, handling common formatting issues.
 
         Args:
@@ -55,7 +57,7 @@ class ConversationGenerator(ABC):
             pass
 
         # Try to extract JSON from markdown code blocks
-        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(1))
@@ -63,7 +65,7 @@ class ConversationGenerator(ABC):
                 pass
 
         # Try to find any JSON object in the response
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        json_match = re.search(r"\{.*\}", response, re.DOTALL)
         if json_match:
             try:
                 return json.loads(json_match.group(0))

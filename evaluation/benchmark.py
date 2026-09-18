@@ -16,21 +16,21 @@ import sys
 from pathlib import Path
 
 from evaluation.metrics.evaluate import (
-    load_test_set,
-    run_inference_batch,
-    compute_metrics,
-    print_confusion_matrix,
-    RISK_LEVELS,
     CATEGORIES,
+    RISK_LEVELS,
+    compute_metrics,
+    load_test_set,
+    print_confusion_matrix,
+    run_inference_batch,
 )
 from evaluation.rules import compute_rule_catch_rate
 
 # Targets from issue #11
 TARGETS = {
-    "recall": 0.97,           # true positive rate ≥ 97%
-    "fpr": 0.03,              # false positive rate ≤ 3%
-    "precision": 0.95,        # precision ≥ 95%
-    "f1": 0.96,               # F1 ≥ 0.96
+    "recall": 0.97,  # true positive rate ≥ 97%
+    "fpr": 0.03,  # false positive rate ≤ 3%
+    "precision": 0.95,  # precision ≥ 95%
+    "f1": 0.96,  # F1 ≥ 0.96
     "rule_catch_rate": 0.80,  # level 0-3 rule-based catch rate ≥ 80%
 }
 
@@ -59,11 +59,18 @@ def check_targets(summary: dict) -> list[str]:
     if summary["fpr"] > TARGETS["fpr"]:
         failures.append(f"FPR {summary['fpr']:.4f} > target {TARGETS['fpr']}")
     if summary["precision"] < TARGETS["precision"]:
-        failures.append(f"precision {summary['precision']:.4f} < target {TARGETS['precision']}")
+        failures.append(
+            f"precision {summary['precision']:.4f} < target {TARGETS['precision']}"
+        )
     if summary["f1"] < TARGETS["f1"]:
         failures.append(f"F1 {summary['f1']:.4f} < target {TARGETS['f1']}")
-    if "rule_catch_rate" in summary and summary["rule_catch_rate"] < TARGETS["rule_catch_rate"]:
-        failures.append(f"rule catch rate {summary['rule_catch_rate']:.4f} < target {TARGETS['rule_catch_rate']}")
+    if (
+        "rule_catch_rate" in summary
+        and summary["rule_catch_rate"] < TARGETS["rule_catch_rate"]
+    ):
+        failures.append(
+            f"rule catch rate {summary['rule_catch_rate']:.4f} < target {TARGETS['rule_catch_rate']}"
+        )
     return failures
 
 
@@ -80,28 +87,40 @@ def check_regression(summary: dict, baseline: dict) -> list[str]:
     return regressions
 
 
-def print_benchmark_report(summary: dict, target_failures: list[str], regressions: list[str]) -> None:
+def print_benchmark_report(
+    summary: dict, target_failures: list[str], regressions: list[str]
+) -> None:
     print("\n" + "=" * 60)
     print("BENCHMARK REPORT")
     print("=" * 60)
-    print(f"\n  Recall (TPR): {summary['recall']:.4f}  [target ≥ {TARGETS['recall']}]  {'✓' if summary['recall'] >= TARGETS['recall'] else '✗'}")
-    print(f"  False Positive Rate: {summary['fpr']:.4f}  [target ≤ {TARGETS['fpr']}]  {'✓' if summary['fpr'] <= TARGETS['fpr'] else '✗'}")
-    print(f"  Precision:    {summary['precision']:.4f}  [target ≥ {TARGETS['precision']}]  {'✓' if summary['precision'] >= TARGETS['precision'] else '✗'}")
-    print(f"  Binary F1:    {summary['f1']:.4f}  [target ≥ {TARGETS['f1']}]  {'✓' if summary['f1'] >= TARGETS['f1'] else '✗'}")
+    print(
+        f"\n  Recall (TPR): {summary['recall']:.4f}  [target ≥ {TARGETS['recall']}]  {'✓' if summary['recall'] >= TARGETS['recall'] else '✗'}"
+    )
+    print(
+        f"  False Positive Rate: {summary['fpr']:.4f}  [target ≤ {TARGETS['fpr']}]  {'✓' if summary['fpr'] <= TARGETS['fpr'] else '✗'}"
+    )
+    print(
+        f"  Precision:    {summary['precision']:.4f}  [target ≥ {TARGETS['precision']}]  {'✓' if summary['precision'] >= TARGETS['precision'] else '✗'}"
+    )
+    print(
+        f"  Binary F1:    {summary['f1']:.4f}  [target ≥ {TARGETS['f1']}]  {'✓' if summary['f1'] >= TARGETS['f1'] else '✗'}"
+    )
     print(f"  Macro F1:     {summary['macro_f1']:.4f}")
     if "rule_catch_rate" in summary:
         rcr = summary["rule_catch_rate"]
-        print(f"  Rule catch:   {rcr:.4f}  [target ≥ {TARGETS['rule_catch_rate']}]  {'✓' if rcr >= TARGETS['rule_catch_rate'] else '✗'}")
+        print(
+            f"  Rule catch:   {rcr:.4f}  [target ≥ {TARGETS['rule_catch_rate']}]  {'✓' if rcr >= TARGETS['rule_catch_rate'] else '✗'}"
+        )
 
     if regressions:
-        print(f"\n  REGRESSIONS vs baseline:")
+        print("\n  REGRESSIONS vs baseline:")
         for r in regressions:
             print(f"    ✗ {r}")
     else:
-        print(f"\n  No regressions vs baseline.")
+        print("\n  No regressions vs baseline.")
 
     if target_failures:
-        print(f"\n  TARGET FAILURES:")
+        print("\n  TARGET FAILURES:")
         for f in target_failures:
             print(f"    ✗ {f}")
         print("\n  BENCHMARK: FAILED")
@@ -113,18 +132,33 @@ def print_benchmark_report(summary: dict, target_failures: list[str], regression
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run SafeCircle accuracy benchmark")
     parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
-    parser.add_argument("--benchmark-set", default=str(BENCHMARK_SET), help="Path to benchmark JSONL")
-    parser.add_argument("--baseline", default=str(BASELINE_PATH), help="Path to baseline JSON for regression check")
-    parser.add_argument("--output", default="evaluation/reports/benchmark", help="Output directory")
+    parser.add_argument(
+        "--benchmark-set", default=str(BENCHMARK_SET), help="Path to benchmark JSONL"
+    )
+    parser.add_argument(
+        "--baseline",
+        default=str(BASELINE_PATH),
+        help="Path to baseline JSON for regression check",
+    )
+    parser.add_argument(
+        "--output", default="evaluation/reports/benchmark", help="Output directory"
+    )
     parser.add_argument("--max-samples", type=int, help="Limit to N samples")
     parser.add_argument("--batch-size", type=int, default=16)
-    parser.add_argument("--save-baseline", action="store_true", help="Save current results as the new baseline")
+    parser.add_argument(
+        "--save-baseline",
+        action="store_true",
+        help="Save current results as the new baseline",
+    )
     args = parser.parse_args()
 
     bench_path = Path(args.benchmark_set)
     if not bench_path.exists():
         print(f"Error: benchmark set not found: {bench_path}", file=sys.stderr)
-        print("Generate it with: python -m data.scripts.create_benchmark_split", file=sys.stderr)
+        print(
+            "Generate it with: python -m data.scripts.create_benchmark_split",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     from training.model.loader import load_for_inference
@@ -135,6 +169,7 @@ def main() -> None:
 
     try:
         from peft import PeftConfig
+
         base_model = PeftConfig.from_pretrained(args.checkpoint).base_model_name_or_path
     except Exception:
         base_model = ""
@@ -143,7 +178,7 @@ def main() -> None:
     print(f"Loading benchmark set: {bench_path}")
     examples = load_test_set(str(bench_path))
     if args.max_samples:
-        examples = examples[:args.max_samples]
+        examples = examples[: args.max_samples]
     print(f"  {len(examples)} examples")
 
     for ex in examples:
@@ -165,7 +200,10 @@ def main() -> None:
     y_true_cats, y_pred_cats = [], []
     latencies: list[float] = []
     failures = 0
-    batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
+    batches = [
+        examples[i : i + args.batch_size]
+        for i in range(0, len(examples), args.batch_size)
+    ]
     total = len(examples)
     done = 0
     print_every = max(1, len(batches) // 10)  # ~10 progress lines total
@@ -179,10 +217,12 @@ def main() -> None:
                 label = json.loads(label)
             labels.append(label)
 
-        predictions, per_example_latency = run_inference_batch(model, tokenizer, prompts)
+        predictions, per_example_latency = run_inference_batch(
+            model, tokenizer, prompts
+        )
         latencies.extend([per_example_latency] * len(batch))
 
-        for label, prediction in zip(labels, predictions):
+        for label, prediction in zip(labels, predictions, strict=False):
             true_level = label.get("risk_level", "none")
             true_cats = [c for c in label.get("categories", []) if c != "benign"]
             if prediction is None:
@@ -192,7 +232,9 @@ def main() -> None:
                 pred_level = prediction.get("risk_level", "none")
                 if pred_level not in RISK_LEVELS:
                     pred_level = "none"
-                pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
+                pred_cats = [
+                    c for c in prediction.get("categories", []) if c in CATEGORIES
+                ]
 
             y_true_levels.append(true_level)
             y_pred_levels.append(pred_level)
@@ -214,16 +256,22 @@ def main() -> None:
     rule_labels = [ex["label"] for ex in examples]
     rule_stats = compute_rule_catch_rate(examples, rule_labels)
     summary["rule_catch_rate"] = rule_stats["catch_rate"]
-    print(f"\n  Rule catch rate: {rule_stats['caught']}/{rule_stats['total_risk']} risk examples "
-          f"({rule_stats['catch_rate']:.1%})  FP rate: {rule_stats['fp_rate']:.1%}")
+    print(
+        f"\n  Rule catch rate: {rule_stats['caught']}/{rule_stats['total_risk']} risk examples "
+        f"({rule_stats['catch_rate']:.1%})  FP rate: {rule_stats['fp_rate']:.1%}"
+    )
 
     # Latency percentiles
     latencies_sorted = sorted(latencies)
     n = len(latencies_sorted)
+
     def _pct(p: float) -> float:
         return round(latencies_sorted[min(int(p / 100 * n), n - 1)] * 1000, 1)
+
     latency = {"p50_ms": _pct(50), "p95_ms": _pct(95), "p99_ms": _pct(99)}
-    print(f"\n  Latency (per example, batched):  P50={latency['p50_ms']}ms  P95={latency['p95_ms']}ms  P99={latency['p99_ms']}ms")
+    print(
+        f"\n  Latency (per example, batched):  P50={latency['p50_ms']}ms  P95={latency['p95_ms']}ms  P99={latency['p99_ms']}ms"
+    )
 
     baseline = {}
     baseline_path = Path(args.baseline)
@@ -239,7 +287,12 @@ def main() -> None:
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-    report = {"summary": summary, "latency": latency, "full": results, "checkpoint": args.checkpoint}
+    report = {
+        "summary": summary,
+        "latency": latency,
+        "full": results,
+        "checkpoint": args.checkpoint,
+    }
     with open(output_dir / "results.json", "w") as f:
         json.dump(report, f, indent=2)
     print(f"\nResults saved to {output_dir}/results.json")
