@@ -81,6 +81,32 @@ TIERS: dict[ModelTier, TierConfig] = {
 # ---------------------------------------------------------------------------
 
 
+def _detect_thermal_state() -> Literal["nominal", "warm", "critical"]:
+    """Best-effort CPU thermal state from Linux sensors (dev host proxy).
+
+    Android/iOS would use their platform thermal APIs; psutil.sensors_temperatures()
+    is Linux-only and returns nothing on macOS/Windows and most CI runners, so
+    unsupported platforms fall back to "nominal".
+    """
+    try:
+        import psutil
+
+        temps = psutil.sensors_temperatures()
+    except Exception:
+        return "nominal"
+    if not temps:
+        return "nominal"
+    max_temp = max(
+        (reading.current for readings in temps.values() for reading in readings),
+        default=0.0,
+    )
+    if max_temp >= 85.0:
+        return "critical"
+    if max_temp >= 70.0:
+        return "warm"
+    return "nominal"
+
+
 @dataclasses.dataclass
 class DeviceCapabilities:
     """Runtime snapshot of device hardware capabilities."""
@@ -115,6 +141,7 @@ class DeviceCapabilities:
                 available_ram_mb=vm.available / 1024 / 1024,
                 battery_pct=battery.percent if battery else 100.0,
                 is_charging=(battery.power_plugged or False) if battery else True,
+                thermal_state=_detect_thermal_state(),
                 cpu_cores=psutil.cpu_count(logical=True) or 4,
             )
         except (ImportError, Exception):
@@ -173,9 +200,20 @@ class ExecutionPolicy:
     def effective_batch_size(self) -> int:
         return max(1, int(self.batch_size * self.thermal_batch_multiplier))
 
-    def should_run(self, battery_pct: float, is_charging: bool) -> bool:
-        """Whether inference should proceed given current battery state."""
-        if is_charging:
+    def should_run(
+        self,
+        battery_pct: float,
+        is_charging: bool,
+        *,
+        safety_escalation: bool = False,
+    ) -> bool:
+        """Whether inference should proceed given current battery state.
+
+        High-confidence rule-prefilter escalations (Level 0-3 hits) must
+        still run below min_battery_pct — the battery policy throttles
+        routine LLM calls, not safety-critical ones.
+        """
+        if is_charging or safety_escalation:
             return True
         return battery_pct >= self.min_battery_pct
 

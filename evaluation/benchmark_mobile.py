@@ -3,10 +3,10 @@
 
 Validates ALL constraints from issue #8:
     - Accuracy: TPR grooming >= 97 %, TPR explicit >= 99 %, FPR <= 3 %
-    - Latency: < 500 ms per inference (P95)
-    - RAM: < 150 MB peak loaded
-    - Model size: < 50 MB on disk, < 100 MB loaded RAM
-    - Battery: < 3 % drain / day (estimated)
+    - Latency: <= 500 ms per inference (P95)
+    - RAM: <= 150 MB peak loaded
+    - Model size: <= 50 MB on disk, <= 100 MB loaded RAM
+    - Battery: <= 3 % drain / day (estimated)
     - Regression: no metric may drop > 0.5 % vs saved baseline
 
 Runs both accuracy evaluation (via litert-lm CLI) and performance profiling
@@ -33,13 +33,18 @@ from pathlib import Path
 try:
     import psutil
 except ImportError:
-    psutil = None  # type: ignore[assignment]
+    print(
+        "ERROR: psutil not installed — required to measure RAM/energy targets. "
+        "Run: pip install psutil",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 from sklearn.metrics import recall_score
 from tqdm import tqdm
 
 from evaluation.rules import compute_rule_catch_rate
-from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS, SYSTEM_PROMPT
+from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS
 
 # ---------------------------------------------------------------------------
 # Issue #8 targets
@@ -76,12 +81,16 @@ _DEFAULT_TDP_MW = 3000.0  # mid-range mobile SoC
 
 
 def _build_prompt(conversation: str) -> str:
-    return (
-        f"<start_of_turn>user\n"
-        f"{SYSTEM_PROMPT}\n\n"
-        f"Analyze this conversation:\n{conversation}<end_of_turn>\n"
-        f"<start_of_turn>model\n"
-    )
+    """Build the plain-text prompt for litert-lm.
+
+    The exported .litertlm model already bakes the Gemma chat template and
+    SYSTEM_PROMPT into its user_prompt_prefix/suffix (see
+    training/scripts/export_litert.py), so litert-lm applies them
+    automatically. Adding <start_of_turn> tags or the system prompt here
+    would double-wrap the prompt and not match what the model was exported
+    to expect.
+    """
+    return f"Analyze this conversation:\n{conversation}"
 
 
 def _run_litert_profiled(
@@ -100,11 +109,16 @@ def _run_litert_profiled(
 
     peak_rss = 0.0
     cpu_samples: list[float] = []
+    timed_out = False
 
     if psutil is not None:
         try:
             ps = psutil.Process(proc.pid)
             while proc.poll() is None:
+                if time.perf_counter() - t0 > timeout:
+                    timed_out = True
+                    proc.kill()
+                    break
                 try:
                     mem = ps.memory_info().rss / 1024 / 1024
                     peak_rss = max(peak_rss, mem)
@@ -115,7 +129,13 @@ def _run_litert_profiled(
         except psutil.NoSuchProcess:
             pass
 
-    stdout, stderr = proc.communicate(timeout=timeout)
+    remaining = max(timeout - (time.perf_counter() - t0), 0.0)
+    try:
+        stdout, stderr = proc.communicate(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        proc.kill()
+        stdout, stderr = proc.communicate()
     wall = time.perf_counter() - t0
 
     avg_cpu = sum(cpu_samples) / len(cpu_samples) if cpu_samples else 0.0
@@ -123,7 +143,7 @@ def _run_litert_profiled(
     energy_mwh = round(tdp_mw * utilisation * (wall / 3600.0), 4)
 
     return {
-        "output": stdout.strip() if proc.returncode == 0 else None,
+        "output": stdout.strip() if (proc.returncode == 0 and not timed_out) else None,
         "wall_s": wall,
         "peak_rss_mb": peak_rss,
         "avg_cpu_pct": avg_cpu,
@@ -321,7 +341,10 @@ def run_benchmark(
         cat_recall[cat] = round(recall_score(t, p, zero_division=0), 4)
 
     # Rule-based catch rate
-    rule_conversations = [e["conversation"] for e in rule_examples]
+    rule_conversations = [
+        {"messages": [{"role": "user", "content": e["conversation"]}]}
+        for e in rule_examples
+    ]
     rule_labels = [e["label"] for e in rule_examples]
     rule_results = compute_rule_catch_rate(rule_conversations, rule_labels)
 
@@ -349,7 +372,7 @@ def run_benchmark(
             "f1": f1,
             "per_category_recall": cat_recall,
             "rule_catch_rate": rule_results.get("catch_rate", 0.0),
-            "rule_fpr": rule_results.get("false_positive_rate", 0.0),
+            "rule_fpr": rule_results.get("fp_rate", 0.0),
             "tp": tp,
             "tn": tn,
             "fp": fp,
@@ -414,6 +437,13 @@ def check_targets(report: dict) -> list[str]:
     # Performance
     _check_lte("latency_p95_ms", p["latency_ms"]["p95"], TARGETS["latency_p95_ms"])
     _check_lte("peak_ram_mb", p["peak_ram_mb"]["max"], TARGETS["peak_ram_mb"])
+    # Proxy: peak subprocess RSS is an upper bound on model-only loaded RAM
+    # (each run is a fresh `litert-lm run` process, so RSS includes runtime
+    # overhead beyond just the loaded weights). A tighter measurement needs
+    # a persistent model session that reports RSS right after load.
+    _check_lte(
+        "model_loaded_ram_mb", p["peak_ram_mb"]["max"], TARGETS["model_loaded_ram_mb"]
+    )
     _check_lte("model_disk_mb", report["model_disk_mb"], TARGETS["model_disk_mb"])
     _check_lte(
         "energy_mwh_per_inference",
@@ -495,12 +525,6 @@ def main() -> None:
     if not model_path.exists():
         print(f"ERROR: model not found: {model_path}", file=sys.stderr)
         sys.exit(1)
-
-    if psutil is None:
-        print(
-            "WARNING: psutil not installed — performance metrics will be zeros",
-            file=sys.stderr,
-        )
 
     # Run benchmark
     report = run_benchmark(

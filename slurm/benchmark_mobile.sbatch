@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=benchmark_mobile
-#SBATCH --output=/slurm/home/jtpalma/output/%j/stdout.log
-#SBATCH --error=/slurm/home/jtpalma/output/%j/stderr.log
+#SBATCH --output=/slurm/home/%u/output/%j/stdout.log
+#SBATCH --error=/slurm/home/%u/output/%j/stderr.log
 #SBATCH --partition=gpuMin
 #SBATCH --gres=gpu:nvidia_l4:1
 #SBATCH --cpus-per-task=4
@@ -23,8 +23,15 @@
 
 set -euo pipefail
 
-REPO="/slurm/home/jtpalma/safecircle/horizon"
+REPO="${SLURM_SUBMIT_DIR:-$PWD}"
 SCRATCH="${SLURM_TMPDIR:-/tmp}/horizon-$$"
+
+MODEL_PATH="${MODEL_PATH:?ERROR: MODEL_PATH must be set}"
+TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
+
+# Resolve relative paths against REPO before the model dir is excluded below.
+[[ "$MODEL_PATH" = /* ]] || MODEL_PATH="$REPO/$MODEL_PATH"
+[[ "$TEST_SET" = /* ]] || TEST_SET="$REPO/$TEST_SET"
 
 # Copy project to fast scratch
 echo "Copying project to scratch: $SCRATCH"
@@ -45,28 +52,25 @@ cd "$SCRATCH"
 source slurm/install_env.sh
 source .env 2>/dev/null || true
 
-# Defaults
-MODEL_PATH="${MODEL_PATH:?ERROR: MODEL_PATH must be set}"
-TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
-
-# Build command
-CMD="python -m evaluation.benchmark_mobile --model $MODEL_PATH --test-set $TEST_SET"
+cmd=(python -m evaluation.benchmark_mobile --model "$MODEL_PATH" --test-set "$TEST_SET")
 
 if [ -n "${MAX_SAMPLES:-}" ]; then
-    CMD="$CMD --max-samples $MAX_SAMPLES"
+    cmd+=(--max-samples "$MAX_SAMPLES")
 fi
 
 if [ -n "${TDP_MW:-}" ]; then
-    CMD="$CMD --tdp-mw $TDP_MW"
+    cmd+=(--tdp-mw "$TDP_MW")
 fi
 
 if [ "${SAVE_BASELINE:-}" = "1" ]; then
-    CMD="$CMD --save-baseline"
+    cmd+=(--save-baseline)
 fi
 
-echo "Running: $CMD"
+mkdir -p "$SCRATCH/evaluation/reports/benchmark_mobile"
+
+echo "Running: ${cmd[*]}"
 echo "=========================================="
-eval "$CMD" 2>&1 | tee "$SCRATCH/evaluation/reports/benchmark_mobile/run.log"
+"${cmd[@]}" 2>&1 | tee "$SCRATCH/evaluation/reports/benchmark_mobile/run.log"
 exit_code=${PIPESTATUS[0]}
 
 echo "=========================================="

@@ -31,7 +31,7 @@ from sklearn.metrics import (
 )
 from tqdm import tqdm
 
-from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS, SYSTEM_PROMPT
+from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS
 
 # Categories that count as "risk" (everything except benign)
 _RISK_CATS = [c for c in RISK_CATEGORIES if c != "benign"]
@@ -43,16 +43,16 @@ _RISK_CATS = [c for c in RISK_CATEGORIES if c != "benign"]
 
 
 def _build_prompt(conversation_text: str) -> str:
-    """Wrap raw conversation text in the Gemma chat template used at training time.
+    """Build the plain-text prompt for litert-lm.
 
-    Includes the system prompt so the model knows to respond with JSON.
+    The exported .litertlm model already bakes the Gemma chat template and
+    SYSTEM_PROMPT into its user_prompt_prefix/suffix (see
+    training/scripts/export_litert.py), so litert-lm applies them
+    automatically. Adding <start_of_turn> tags or the system prompt here
+    would double-wrap the prompt and not match what the model was exported
+    to expect.
     """
-    return (
-        f"<start_of_turn>user\n"
-        f"{SYSTEM_PROMPT}\n\n"
-        f"Analyze this conversation:\n{conversation_text}<end_of_turn>\n"
-        f"<start_of_turn>model\n"
-    )
+    return f"Analyze this conversation:\n{conversation_text}"
 
 
 def _run_litert(model_path: str, prompt: str, timeout: int = 120) -> str | None:

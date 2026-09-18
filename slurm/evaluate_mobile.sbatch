@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=evaluate_mobile
-#SBATCH --output=/slurm/home/jtpalma/output/%j/stdout.log
-#SBATCH --error=/slurm/home/jtpalma/output/%j/stderr.log
+#SBATCH --output=/slurm/home/%u/output/%j/stdout.log
+#SBATCH --error=/slurm/home/%u/output/%j/stderr.log
 #SBATCH --partition=gpuMin
 #SBATCH --gres=gpu:nvidia_l4:1
 #SBATCH --cpus-per-task=4
@@ -21,8 +21,15 @@
 
 set -euo pipefail
 
-REPO="/slurm/home/jtpalma/safecircle/horizon"
+REPO="${SLURM_SUBMIT_DIR:-$PWD}"
 SCRATCH="${SLURM_TMPDIR:-/tmp}/horizon-$$"
+
+MODEL_PATH="${MODEL_PATH:?ERROR: MODEL_PATH must be set}"
+TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
+
+# Resolve relative paths against REPO before the model dir is excluded below.
+[[ "$MODEL_PATH" = /* ]] || MODEL_PATH="$REPO/$MODEL_PATH"
+[[ "$TEST_SET" = /* ]] || TEST_SET="$REPO/$TEST_SET"
 
 echo "Copying project to scratch: $SCRATCH"
 mkdir -p "$SCRATCH"
@@ -40,20 +47,17 @@ cd "$SCRATCH"
 source slurm/install_env.sh
 source .env 2>/dev/null || true
 
-MODEL_PATH="${MODEL_PATH:?ERROR: MODEL_PATH must be set}"
-TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
-
-CMD="python -m evaluation.metrics.evaluate_mobile --model $MODEL_PATH --test-set $TEST_SET"
+cmd=(python -m evaluation.metrics.evaluate_mobile --model "$MODEL_PATH" --test-set "$TEST_SET")
 
 if [ -n "${MAX_SAMPLES:-}" ]; then
-    CMD="$CMD --max-samples $MAX_SAMPLES"
+    cmd+=(--max-samples "$MAX_SAMPLES")
 fi
 
 mkdir -p "$SCRATCH/evaluation/reports/mobile"
 
-echo "Running: $CMD"
+echo "Running: ${cmd[*]}"
 echo "=========================================="
-eval "$CMD" 2>&1 | tee "$SCRATCH/evaluation/reports/mobile/run.log"
+"${cmd[@]}" 2>&1 | tee "$SCRATCH/evaluation/reports/mobile/run.log"
 exit_code=${PIPESTATUS[0]}
 
 echo "=========================================="

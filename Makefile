@@ -1,4 +1,6 @@
-.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval evaluate-mobile benchmark-mobile profile-mobile slurm-benchmark-mobile slurm-evaluate-mobile
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval evaluate-mobile benchmark-mobile profile-mobile profile-mobile-check slurm-benchmark-mobile slurm-evaluate-mobile
+
+comma := ,
 
 # Default target
 help:
@@ -169,10 +171,13 @@ benchmark-mobile:
 	@if [ -z "$(MODEL)" ]; then echo "Error: MODEL required. Use: make benchmark-mobile MODEL=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"; exit 1; fi
 	python -m evaluation.benchmark_mobile --model $(MODEL) --test-set $(or $(TEST_SET),data/processed/eval.jsonl) $(if $(SAVE_BASELINE),--save-baseline,)
 
-## Profile mobile model RAM, latency, and energy
+## Profile mobile model RAM, latency, and energy (always checks issue #8 targets)
 profile-mobile:
 	@if [ -z "$(MODEL)" ]; then echo "Error: MODEL required. Use: make profile-mobile MODEL=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"; exit 1; fi
 	python -m evaluation.profile_mobile --model $(MODEL) --runs $(or $(RUNS),10) --check-targets
+
+## Alias for profile-mobile (kept for interface compatibility; --check-targets is always on)
+profile-mobile-check: profile-mobile
 
 analyze-errors:
 	python -m evaluation.analysis.error_analysis --predictions evaluation/reports/latest/predictions.jsonl

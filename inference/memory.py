@@ -66,6 +66,17 @@ class MemoryStats:
     def exceeds_budget(self, budget: MemoryBudget) -> bool:
         return self.process_rss_mb > budget.max_total_ram_mb
 
+    def exceeds_loaded_budget(self, budget: MemoryBudget) -> bool:
+        """Whether RSS exceeds the loaded-model-only budget.
+
+        process_rss_mb is total process RSS, not model-only memory, so this
+        is a conservative proxy — only meaningful while state is LOADED.
+        """
+        return (
+            self.model_state == ModelState.LOADED
+            and self.process_rss_mb > budget.max_loaded_ram_mb
+        )
+
     def system_memory_low(self, budget: MemoryBudget) -> bool:
         return self.system_available_mb < budget.low_memory_threshold_mb
 
@@ -311,6 +322,17 @@ class ModelLifecycleManager:
             return
 
         stats = get_memory_stats()
+        stats.model_state = self._state
+
+        # Loaded-model budget exceeded
+        if stats.exceeds_loaded_budget(self.budget):
+            logger.warning(
+                "Loaded-model RSS (%.0f MB) exceeds budget (%.0f MB) — unloading",
+                stats.process_rss_mb,
+                self.budget.max_loaded_ram_mb,
+            )
+            self._unload()
+            return
 
         # Critical: system memory dangerously low
         if stats.system_memory_critical(self.budget):

@@ -5,10 +5,10 @@ Measures peak RAM usage and estimates energy drain per inference call by
 running the LiteRT model via `uvx litert-lm` and monitoring the process.
 
 Includes pass/fail target checks from issue #8:
-    - Latency P95 < 500 ms
-    - Peak RAM   < 150 MB
-    - Model disk < 50 MB
-    - Energy P95 < 0.66 mWh / inference (≈ 3 % battery / day at 1 inv/min)
+    - Latency P95 <= 500 ms
+    - Peak RAM   <= 150 MB
+    - Model disk <= 50 MB
+    - Energy P95 <= 0.66 mWh / inference (≈ 3 % battery / day at 1 inv/min)
 
 Usage:
     python -m evaluation.profile_mobile \
@@ -56,7 +56,9 @@ _DEFAULT_PROMPT = (
 )
 
 
-def _run_litert(model_path: str, prompt: str) -> tuple[float, float, float]:
+def _run_litert(
+    model_path: str, prompt: str, timeout: int = 120
+) -> tuple[float, float, float]:
     """Run one litert-lm inference and return (wall_s, peak_rss_mb, cpu_pct)."""
     cmd = ["uvx", "litert-lm", "run", model_path, "--prompt", prompt]
 
@@ -74,6 +76,9 @@ def _run_litert(model_path: str, prompt: str) -> tuple[float, float, float]:
     try:
         ps = psutil.Process(proc.pid)
         while proc.poll() is None:
+            if time.perf_counter() - t0 > timeout:
+                proc.kill()
+                break
             try:
                 mem = ps.memory_info().rss / 1024 / 1024  # MB
                 if mem > peak_rss:
@@ -85,7 +90,13 @@ def _run_litert(model_path: str, prompt: str) -> tuple[float, float, float]:
     except psutil.NoSuchProcess:
         pass
 
-    stdout, stderr = proc.communicate(timeout=120)
+    remaining = max(timeout - (time.perf_counter() - t0), 0.0)
+    try:
+        stdout, stderr = proc.communicate(timeout=remaining)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+
     wall = time.perf_counter() - t0
 
     if proc.returncode != 0:
