@@ -339,6 +339,7 @@ def main() -> None:
     y_pred_cats: list[list[str]] = []
     failures = 0
     latencies: list[float] = []
+    failure_log: list[dict] = []
 
     for ex in tqdm(examples, desc="Evaluating", unit="ex"):
         # Extract conversation and label
@@ -366,6 +367,7 @@ def main() -> None:
             failures += 1
             pred_level = "none"
             pred_cats = []
+            failure_log.append({"raw_output": raw_output, "elapsed_s": round(elapsed, 2)})
         else:
             pred_level = prediction.get("risk_level", "none")
             if pred_level not in RISK_LEVELS:
@@ -381,6 +383,12 @@ def main() -> None:
         print(
             f"\nWarning: {failures}/{len(examples)} inference failures (defaulted to 'none')"
         )
+        failures_path = Path(args.output) / "failures.jsonl"
+        failures_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(failures_path, "w") as f:
+            for entry in failure_log:
+                f.write(json.dumps(entry) + "\n")
+        print(f"Failure details written to {failures_path}")
 
     # Compute and display
     results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
