@@ -44,7 +44,7 @@ from sklearn.metrics import recall_score
 from tqdm import tqdm
 
 from evaluation.rules import compute_rule_catch_rate
-from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS
+from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS, SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
 # Issue #8 targets
@@ -81,16 +81,23 @@ _DEFAULT_TDP_MW = 3000.0  # mid-range mobile SoC
 
 
 def _build_prompt(conversation: str) -> str:
-    """Build the plain-text prompt for litert-lm.
+    """Wrap raw conversation text in the Gemma chat template used at training time.
 
-    The exported .litertlm model already bakes the Gemma chat template and
-    SYSTEM_PROMPT into its user_prompt_prefix/suffix (see
-    training/scripts/export_litert.py), so litert-lm applies them
-    automatically. Adding <start_of_turn> tags or the system prompt here
-    would double-wrap the prompt and not match what the model was exported
-    to expect.
+    Note: export_litert.py bakes user_prompt_prefix/suffix (including
+    SYSTEM_PROMPT) into the .litertlm export config, which looked like it
+    should make litert-lm apply the template automatically to plain text.
+    Empirically that is not what happens: passing plain text (job 13902,
+    500-sample run) gave 500/500 inference failures (the model just
+    free-continues the conversation instead of responding at all), while
+    this manual wrapping gives ~3.6% failures (job 13899). Keep the manual
+    wrapping until the litert-lm/export template behavior is understood.
     """
-    return f"Analyze this conversation:\n{conversation}"
+    return (
+        f"<start_of_turn>user\n"
+        f"{SYSTEM_PROMPT}\n\n"
+        f"Analyze this conversation:\n{conversation}<end_of_turn>\n"
+        f"<start_of_turn>model\n"
+    )
 
 
 def _run_litert_profiled(
