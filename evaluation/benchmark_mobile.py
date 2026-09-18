@@ -131,13 +131,26 @@ def _run_litert_profiled(
     }
 
 
+def _repair_pipe_separated_arrays(block: str) -> str:
+    """Fix a model quirk where JSON arrays use `|` instead of `,` as separator.
+
+    e.g. ["personal_info"|"threats"] -> ["personal_info", "threats"]
+    """
+    return re.sub(r'"\s*\|\s*"', '", "', block)
+
+
 def _parse_prediction(raw: str | None) -> dict | None:
     if raw is None:
         return None
     match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
     if match:
+        block = match.group(0)
         try:
-            return json.loads(match.group(0))
+            return json.loads(block)
+        except json.JSONDecodeError:
+            pass
+        try:
+            return json.loads(_repair_pipe_separated_arrays(block))
         except json.JSONDecodeError:
             pass
     try:
