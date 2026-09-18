@@ -1,7 +1,9 @@
 """Tests for conversation generators."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from data.generation.generators.base import ConversationGenerator, GenerationResult
 from data.generation.prompts.base import ConversationPrompt
 from data.generation.validators.schemas import RiskCategory, RiskLevel
@@ -14,12 +16,12 @@ def test_generation_result_success():
         conversation={
             "messages": [
                 {"role": "sent", "content": "hi", "timestamp": 1000},
-                {"role": "received", "content": "hey", "timestamp": 1001}
+                {"role": "received", "content": "hey", "timestamp": 1001},
             ],
-            "reasoning": "Test conversation"
+            "reasoning": "Test conversation",
         },
         raw_response='{"messages": [...], "reasoning": "Test"}',
-        error=None
+        error=None,
     )
     assert result.success
     assert len(result.conversation["messages"]) == 2
@@ -32,7 +34,7 @@ def test_generation_result_failure():
         success=False,
         conversation=None,
         raw_response="Error occurred",
-        error="API timeout"
+        error="API timeout",
     )
     assert not result.success
     assert result.conversation is None
@@ -42,8 +44,8 @@ def test_generation_result_failure():
 def test_generator_interface_methods():
     """Test generator interface has required methods."""
     # This tests the abstract base class structure
-    assert hasattr(ConversationGenerator, 'generate')
-    assert hasattr(ConversationGenerator, 'name')
+    assert hasattr(ConversationGenerator, "generate")
+    assert hasattr(ConversationGenerator, "name")
 
 
 # Claude Generator Tests
@@ -65,13 +67,17 @@ async def test_claude_generator_success():
     from data.generation.generators.claude_generator import ClaudeGenerator
     from data.generation.prompts.grooming import create_grooming_prompt
 
-    with patch('anthropic.AsyncAnthropic') as mock_client:
+    with patch("anthropic.AsyncAnthropic") as mock_client:
         # Mock API response
         mock_message = AsyncMock()
         mock_message.content = [
-            type('Content', (), {
-                'text': '{"messages": [{"role": "sent", "content": "test", "timestamp": 1000}], "reasoning": "test"}'
-            })()
+            type(
+                "Content",
+                (),
+                {
+                    "text": '{"messages": [{"role": "sent", "content": "test", "timestamp": 1000}], "reasoning": "test"}'
+                },
+            )()
         ]
         mock_client.return_value.messages.create = AsyncMock(return_value=mock_message)
 
@@ -90,7 +96,7 @@ async def test_claude_generator_api_error():
     from data.generation.generators.claude_generator import ClaudeGenerator
     from data.generation.prompts.grooming import create_grooming_prompt
 
-    with patch('anthropic.AsyncAnthropic') as mock_client:
+    with patch("anthropic.AsyncAnthropic") as mock_client:
         mock_client.return_value.messages.create = AsyncMock(
             side_effect=Exception("API Error")
         )
@@ -123,15 +129,25 @@ async def test_gpt_generator_success():
     from data.generation.generators.gpt_generator import GPTGenerator
     from data.generation.prompts.grooming import create_grooming_prompt
 
-    with patch('openai.AsyncOpenAI') as mock_client:
+    with patch("openai.AsyncOpenAI") as mock_client:
         # Mock API response
-        mock_choice = type('Choice', (), {
-            'message': type('Message', (), {
-                'content': '{"messages": [{"role": "sent", "content": "test", "timestamp": 1000}], "reasoning": "test"}'
-            })()
-        })()
-        mock_response = type('Response', (), {'choices': [mock_choice]})()
-        mock_client.return_value.chat.completions.create = AsyncMock(return_value=mock_response)
+        mock_choice = type(
+            "Choice",
+            (),
+            {
+                "message": type(
+                    "Message",
+                    (),
+                    {
+                        "content": '{"messages": [{"role": "sent", "content": "test", "timestamp": 1000}], "reasoning": "test"}'
+                    },
+                )()
+            },
+        )()
+        mock_response = type("Response", (), {"choices": [mock_choice]})()
+        mock_client.return_value.chat.completions.create = AsyncMock(
+            return_value=mock_response
+        )
 
         generator = GPTGenerator(api_key="test_key")
         prompt = create_grooming_prompt(RiskLevel.LOW, 14, 5)
@@ -147,7 +163,7 @@ async def test_gpt_generator_api_error():
     from data.generation.generators.gpt_generator import GPTGenerator
     from data.generation.prompts.grooming import create_grooming_prompt
 
-    with patch('openai.AsyncOpenAI') as mock_client:
+    with patch("openai.AsyncOpenAI") as mock_client:
         mock_client.return_value.chat.completions.create = AsyncMock(
             side_effect=Exception("API Error")
         )
@@ -188,7 +204,13 @@ async def test_vllm_generator_sends_response_format():
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
-            "choices": [{"message": {"content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'}}]
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'
+                    }
+                }
+            ]
         }
         return mock_resp
 
@@ -212,7 +234,13 @@ async def test_vllm_generator_max_tokens_512():
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
-            "choices": [{"message": {"content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'}}]
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"messages":[{"role":"sent","content":"hi"},{"role":"received","content":"hey"}],"reasoning":"ok"}'
+                    }
+                }
+            ]
         }
         return mock_resp
 

@@ -1,8 +1,12 @@
 """Sexual content category prompt — keeps content clinical, focused on pattern recognition."""
 
 import json
+
 from data.generation.prompts.base import (
-    ConversationPrompt, Language, format_system_prompt, make_persona_seed,
+    ConversationPrompt,
+    Language,
+    format_system_prompt,
+    make_persona_seed,
 )
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
@@ -13,31 +17,56 @@ _SEVERITY_LABEL = {
     RiskLevel.CRITICAL: ("extreme", "extremo"),
 }
 
-_FEW_SHOT_EN = json.dumps({"messages": [
-    {"role": "received", "content": "you're honestly really pretty, has anyone told you that"},
-    {"role": "sent", "content": "thanks i guess"},
-    {"role": "received", "content": "like seriously. do you have more pics?"},
-    {"role": "sent", "content": "i have instagram"},
-    {"role": "received", "content": "i mean like personal ones. just for me"},
-    {"role": "sent", "content": "um no that's weird"},
-    {"role": "received", "content": "it's not weird, we're close. i just want to see you"},
-], "reasoning": "Moderate sexual content: unsolicited compliments escalating to requests for private photos."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_EN = json.dumps(
+    {
+        "messages": [
+            {
+                "role": "received",
+                "content": "you're honestly really pretty, has anyone told you that",
+            },
+            {"role": "sent", "content": "thanks i guess"},
+            {"role": "received", "content": "like seriously. do you have more pics?"},
+            {"role": "sent", "content": "i have instagram"},
+            {"role": "received", "content": "i mean like personal ones. just for me"},
+            {"role": "sent", "content": "um no that's weird"},
+            {
+                "role": "received",
+                "content": "it's not weird, we're close. i just want to see you",
+            },
+        ],
+        "reasoning": "Moderate sexual content: unsolicited compliments escalating to requests for private photos.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
-_FEW_SHOT_ES = json.dumps({"messages": [
-    {"role": "received", "content": "eres muy guapa la verdad, ¿te lo han dicho alguna vez?"},
-    {"role": "sent", "content": "gracias supongo"},
-    {"role": "received", "content": "en serio. ¿tienes más fotos?"},
-    {"role": "sent", "content": "tengo instagram"},
-    {"role": "received", "content": "digo fotos más personales. solo para mí"},
-    {"role": "sent", "content": "no, eso es raro"},
-    {"role": "received", "content": "no es raro, tenemos confianza. solo quiero verte"},
-], "reasoning": "Contenido sexual moderado: halagos no solicitados que escalan a petición de fotos privadas."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_ES = json.dumps(
+    {
+        "messages": [
+            {
+                "role": "received",
+                "content": "eres muy guapa la verdad, ¿te lo han dicho alguna vez?",
+            },
+            {"role": "sent", "content": "gracias supongo"},
+            {"role": "received", "content": "en serio. ¿tienes más fotos?"},
+            {"role": "sent", "content": "tengo instagram"},
+            {"role": "received", "content": "digo fotos más personales. solo para mí"},
+            {"role": "sent", "content": "no, eso es raro"},
+            {
+                "role": "received",
+                "content": "no es raro, tenemos confianza. solo quiero verte",
+            },
+        ],
+        "reasoning": "Contenido sexual moderado: halagos no solicitados que escalan a petición de fotos privadas.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
 
-def create_sexual_content_prompt(severity: RiskLevel, child_age: int, num_messages: int,
-                                 language: Language = "en") -> ConversationPrompt:
+def create_sexual_content_prompt(
+    severity: RiskLevel, child_age: int, num_messages: int, language: Language = "en"
+) -> ConversationPrompt:
     label_en, label_es = _SEVERITY_LABEL.get(severity, ("moderate", "moderado"))
     if language == "es":
         persona = make_persona_seed("es")
@@ -66,5 +95,9 @@ def create_sexual_content_prompt(severity: RiskLevel, child_age: int, num_messag
         severity=severity,
         system_prompt=format_system_prompt(language),
         user_prompt=user_prompt,
-        metadata={"child_age": child_age, "num_messages": num_messages, "language": language},
+        metadata={
+            "child_age": child_age,
+            "num_messages": num_messages,
+            "language": language,
+        },
     )

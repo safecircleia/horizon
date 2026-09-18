@@ -219,8 +219,16 @@ def compute_metrics(
     y_pred_bin = ["benign" if lv == "none" else "risk" for lv in y_pred_levels]
     total_benign = y_true_bin.count("benign")
     total_risk = y_true_bin.count("risk")
-    fp = sum(1 for t, p in zip(y_true_bin, y_pred_bin) if t == "benign" and p == "risk")
-    fn = sum(1 for t, p in zip(y_true_bin, y_pred_bin) if t == "risk" and p == "benign")
+    fp = sum(
+        1
+        for t, p in zip(y_true_bin, y_pred_bin, strict=True)
+        if t == "benign" and p == "risk"
+    )
+    fn = sum(
+        1
+        for t, p in zip(y_true_bin, y_pred_bin, strict=True)
+        if t == "risk" and p == "benign"
+    )
     tp = total_risk - fn
 
     results["binary"] = {
@@ -367,7 +375,9 @@ def main() -> None:
             failures += 1
             pred_level = "none"
             pred_cats = []
-            failure_log.append({"raw_output": raw_output, "elapsed_s": round(elapsed, 2)})
+            failure_log.append(
+                {"raw_output": raw_output, "elapsed_s": round(elapsed, 2)}
+            )
         else:
             pred_level = prediction.get("risk_level", "none")
             if pred_level not in RISK_LEVELS:

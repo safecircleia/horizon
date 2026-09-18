@@ -15,10 +15,8 @@ thermal state.
 from __future__ import annotations
 
 import dataclasses
-import json
 from pathlib import Path
 from typing import Literal
-
 
 # ---------------------------------------------------------------------------
 # Model tier definitions
@@ -101,7 +99,7 @@ class DeviceCapabilities:
         return "lite"
 
     @classmethod
-    def detect(cls) -> "DeviceCapabilities":
+    def detect(cls) -> DeviceCapabilities:
         """Detect device capabilities on the current host (best-effort).
 
         On Android, this would use android.os.ActivityManager and
@@ -148,7 +146,7 @@ class ExecutionPolicy:
     thermal_batch_multiplier: float = 1.0
 
     @classmethod
-    def from_device(cls, capabilities: DeviceCapabilities) -> "ExecutionPolicy":
+    def from_device(cls, capabilities: DeviceCapabilities) -> ExecutionPolicy:
         """Create a policy tuned for the detected device."""
         tier_name = capabilities.select_tier()
         tier = TIERS[tier_name]

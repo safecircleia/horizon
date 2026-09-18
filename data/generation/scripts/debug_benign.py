@@ -1,13 +1,25 @@
 """One-shot debug script — run from project root: python -m data.generation.scripts.debug_benign"""
-import asyncio, uuid, datetime, sys
+
+import asyncio
+import datetime
+import sys
+import uuid
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from data.generation.scripts.generate import create_generator, load_config
 from data.generation.prompts.benign import create_benign_prompt
 from data.generation.prompts.threats import create_threats_prompt
-from data.generation.validators.schemas import RiskCategory, RiskLevel, Message, ConversationLabel, SyntheticConversation
+from data.generation.scripts.generate import create_generator, load_config
 from data.generation.validators.quality import validate_conversation_quality
+from data.generation.validators.schemas import (
+    ConversationLabel,
+    Message,
+    RiskCategory,
+    RiskLevel,
+    SyntheticConversation,
+)
+
 
 async def main():
     config = load_config("data/generation/config.yaml")
@@ -24,7 +36,9 @@ async def main():
     print(list(result.conversation.keys()) if result.conversation else "None")
     print()
 
-    raw_messages = result.conversation.get("messages", []) if result.conversation else []
+    raw_messages = (
+        result.conversation.get("messages", []) if result.conversation else []
+    )
     print(f"=== Messages ({len(raw_messages)}) ===")
     for i, m in enumerate(raw_messages[:3]):
         print(f"  [{i}] {m}")
@@ -68,7 +82,15 @@ async def main():
             category=RiskCategory.BENIGN,
             messages=messages,
             label=label,
-            metadata={"generator": "vllm", "child_age": 15, "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "model": gen.model, "attempt": 1},
+            metadata={
+                "generator": "vllm",
+                "child_age": 15,
+                "generated_at": datetime.datetime.now(
+                    datetime.timezone.utc
+                ).isoformat(),
+                "model": gen.model,
+                "attempt": 1,
+            },
         )
         print(f"  OK — {len(conv.messages)} messages")
     except Exception as e:
@@ -77,26 +99,36 @@ async def main():
 
     print("\n=== ALL STEPS PASSED — benign generation should work ===")
 
+
 async def concurrent():
     """Test 50 concurrent requests for both benign and threats to show failure breakdown."""
     config = load_config("data/generation/config.yaml")
     # Use raw thresholds, not the config, so we can see what's actually failing
     MIN_LEN, MAX_LEN = 8, 40
 
-    for category, sev in [(RiskCategory.BENIGN, RiskLevel.NONE), (RiskCategory.THREATS, RiskLevel.HIGH)]:
+    for category, sev in [
+        (RiskCategory.BENIGN, RiskLevel.NONE),
+        (RiskCategory.THREATS, RiskLevel.HIGH),
+    ]:
         gen = create_generator("vllm", config)
         fail_reasons: dict = {}
 
-        async def one(i, cat=category, severity=sev):
-            prompt = create_benign_prompt(15, 10) if cat == RiskCategory.BENIGN else create_threats_prompt(severity, 15, 10)
-            result = await gen.generate(prompt)
+        async def one(i, cat=category, severity=sev, _gen=gen):
+            prompt = (
+                create_benign_prompt(15, 10)
+                if cat == RiskCategory.BENIGN
+                else create_threats_prompt(severity, 15, 10)
+            )
+            result = await _gen.generate(prompt)
             if not result.success:
                 return f"HTTP:{result.error[:60]}"
             try:
                 raw = result.conversation.get("messages", [])
                 messages = [Message(**m) for m in raw]
                 is_valid, errors = validate_conversation_quality(
-                    messages, min_length=MIN_LEN, max_length=MAX_LEN,
+                    messages,
+                    min_length=MIN_LEN,
+                    max_length=MAX_LEN,
                 )
                 if not is_valid:
                     return f"QUALITY:{errors[0]}"
@@ -114,5 +146,6 @@ async def concurrent():
         print(f"\n=== {category.value} ({sev.value}) — {ok}/50 OK ===")
         for reason, count in sorted(fail_reasons.items(), key=lambda x: -x[1]):
             print(f"  {count:>3}x  {reason}")
+
 
 asyncio.run(concurrent())

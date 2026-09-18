@@ -21,8 +21,9 @@ import os
 import random
 import sys
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import jsonlines
 
@@ -59,7 +60,7 @@ from data.generation.validators.schemas import (
 )
 
 
-def load_config(config_path: str) -> Dict[str, Any]:
+def load_config(config_path: str) -> dict[str, Any]:
     """Load configuration from YAML file.
 
     Args:
@@ -72,14 +73,14 @@ def load_config(config_path: str) -> Dict[str, Any]:
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    with open(config_file, "r") as f:
+    with open(config_file) as f:
         config = yaml.safe_load(f)
 
     return config
 
 
 def create_generator(
-    generator_type: str, config: Dict[str, Any]
+    generator_type: str, config: dict[str, Any]
 ) -> ConversationGenerator:
     """Create and initialize the appropriate generator.
 
@@ -125,7 +126,7 @@ def create_generator(
 
 
 def select_severity(
-    category: RiskCategory, severity_distribution: Dict[str, float]
+    category: RiskCategory, severity_distribution: dict[str, float]
 ) -> RiskLevel:
     """Select a random severity level based on distribution.
 
@@ -151,10 +152,10 @@ async def generate_conversation(
     generator: ConversationGenerator,
     category: RiskCategory,
     severity: RiskLevel,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     retry_attempts: int = 3,
     language_mode: str = "mixed",
-) -> Optional[SyntheticConversation]:
+) -> SyntheticConversation | None:
     """Generate a single conversation with quality validation.
 
     Args:
@@ -175,16 +176,33 @@ async def generate_conversation(
         num_messages = random.randint(8, 15)
         lang = pick_language(language_mode)
 
-        # Create prompt
+        # Create prompt — use default-argument capture to bind loop variables
+        _ca, _nm, _lg = child_age, num_messages, lang
         _PROMPT_BUILDERS = {
-            RiskCategory.BENIGN: lambda: create_benign_prompt(child_age, num_messages, lang),
-            RiskCategory.BULLYING: lambda: create_bullying_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.GROOMING: lambda: create_grooming_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.ISOLATION: lambda: create_isolation_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.PERSONAL_INFO: lambda: create_personal_info_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.PLATFORM_MIGRATION: lambda: create_platform_migration_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.SEXUAL_CONTENT: lambda: create_sexual_content_prompt(severity, child_age, num_messages, lang),
-            RiskCategory.THREATS: lambda: create_threats_prompt(severity, child_age, num_messages, lang),
+            RiskCategory.BENIGN: lambda ca=_ca, nm=_nm, lg=_lg: create_benign_prompt(
+                ca, nm, lg
+            ),
+            RiskCategory.BULLYING: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_bullying_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.GROOMING: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_grooming_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.ISOLATION: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_isolation_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.PERSONAL_INFO: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_personal_info_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.PLATFORM_MIGRATION: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_platform_migration_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.SEXUAL_CONTENT: lambda ca=_ca, nm=_nm, lg=_lg: (
+                create_sexual_content_prompt(severity, ca, nm, lg)
+            ),
+            RiskCategory.THREATS: lambda ca=_ca, nm=_nm, lg=_lg: create_threats_prompt(
+                severity, ca, nm, lg
+            ),
         }
         prompt = _PROMPT_BUILDERS[category]()
 
@@ -221,9 +239,11 @@ async def generate_conversation(
             # Create label
             label = ConversationLabel(
                 risk_level=severity,
-                categories=[category]
-                if category != RiskCategory.BENIGN
-                else [RiskCategory.BENIGN],
+                categories=(
+                    [category]
+                    if category != RiskCategory.BENIGN
+                    else [RiskCategory.BENIGN]
+                ),
                 severity_score=severity_scores[severity],
                 reasoning=result.conversation.get(
                     "reasoning", "Generated conversation"
@@ -260,19 +280,19 @@ async def generate_batch(
     generator: ConversationGenerator,
     category: RiskCategory,
     count: int,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     concurrency: int = 10,
-    on_progress: Optional[Callable[[int, int], None]] = None,
+    on_progress: Callable[[int, int], None] | None = None,
     tqdm_position: int = 0,
     language_mode: str = "mixed",
-) -> List[SyntheticConversation]:
+) -> list[SyntheticConversation]:
     """Generate a batch of conversations with a live worker pool.
 
     on_progress: optional callback(n_success, n_failed) after each result.
                  When provided, tqdm is suppressed — the caller owns the display.
     """
     severity_dist = config.get("severity_distribution", {})
-    conversations: List[SyntheticConversation] = []
+    conversations: list[SyntheticConversation] = []
     failed = 0
     semaphore = asyncio.Semaphore(concurrency)
     queue: asyncio.Queue = asyncio.Queue()
@@ -289,8 +309,9 @@ async def generate_batch(
             except asyncio.QueueEmpty:
                 return
             async with semaphore:
-                result = await generate_conversation(generator, category, severity, config,
-                                                     language_mode=language_mode)
+                result = await generate_conversation(
+                    generator, category, severity, config, language_mode=language_mode
+                )
             queue.task_done()
             if result is not None:
                 conversations.append(result)
@@ -306,11 +327,20 @@ async def generate_batch(
                 await queue.put(select_severity(category, severity_dist))
 
     if on_progress is not None:
-        await asyncio.gather(*[asyncio.create_task(worker()) for _ in range(concurrency)])
+        await asyncio.gather(
+            *[asyncio.create_task(worker()) for _ in range(concurrency)]
+        )
     else:
-        with tqdm(total=count, desc=f"{category.value:<20}", unit="conv",
-                  position=tqdm_position, leave=True) as pbar:
-            await asyncio.gather(*[asyncio.create_task(worker(pbar)) for _ in range(concurrency)])
+        with tqdm(
+            total=count,
+            desc=f"{category.value:<20}",
+            unit="conv",
+            position=tqdm_position,
+            leave=True,
+        ) as pbar:
+            await asyncio.gather(
+                *[asyncio.create_task(worker(pbar)) for _ in range(concurrency)]
+            )
 
     return conversations[:count]
 
@@ -329,7 +359,7 @@ def count_existing(output_path: str) -> int:
 
 
 def write_conversations(
-    conversations: List[SyntheticConversation],
+    conversations: list[SyntheticConversation],
     output_path: str,
     append: bool = False,
 ) -> None:
@@ -344,7 +374,7 @@ def write_conversations(
 
 
 def print_summary(
-    conversations: List[SyntheticConversation],
+    conversations: list[SyntheticConversation],
     category: RiskCategory,
     elapsed_time: float,
 ) -> None:
@@ -537,7 +567,9 @@ Examples:
     # Generate conversations
     start_time = datetime.datetime.now()
 
-    concurrency = args.concurrency or config.get("generation", {}).get("concurrency", 10)
+    concurrency = args.concurrency or config.get("generation", {}).get(
+        "concurrency", 10
+    )
     conversations = await generate_batch(
         generator,
         category,

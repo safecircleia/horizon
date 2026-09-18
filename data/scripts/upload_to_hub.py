@@ -2,13 +2,11 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
-from datasets import Dataset, DatasetDict, Features, Sequence, Value
+from datasets import Dataset, DatasetDict
 from huggingface_hub import HfApi
 from tqdm import tqdm
-
 
 HF_REPO_ID = "safecircleai/horizon-training-data"
 
@@ -80,7 +78,9 @@ def ensure_repo_exists(api: HfApi, repo_id: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Upload Horizon dataset to HuggingFace Hub")
+    parser = argparse.ArgumentParser(
+        description="Upload Horizon dataset to HuggingFace Hub"
+    )
     parser.add_argument(
         "--split",
         choices=["raw", "processed", "all"],
@@ -108,7 +108,9 @@ def main() -> None:
         raw_ds = build_raw_dataset(root)
         if raw_ds:
             print(f"Pushing raw dataset to {args.repo_id} (config: raw)...")
-            raw_ds.push_to_hub(args.repo_id, config_name="raw", private=True, token=args.token)
+            raw_ds.push_to_hub(
+                args.repo_id, config_name="raw", private=True, token=args.token
+            )
             print("Raw dataset uploaded.")
 
     if args.split in ("processed", "all"):
@@ -116,10 +118,14 @@ def main() -> None:
         processed_ds = build_processed_dataset(root)
         if processed_ds:
             print(f"Pushing processed dataset to {args.repo_id} (config: processed)...")
-            processed_ds.push_to_hub(args.repo_id, config_name="processed", private=True, token=args.token)
+            processed_ds.push_to_hub(
+                args.repo_id, config_name="processed", private=True, token=args.token
+            )
             print("Processed dataset uploaded.")
 
-    print(f"\nDone. Dataset available at: https://huggingface.co/datasets/{args.repo_id}")
+    print(
+        f"\nDone. Dataset available at: https://huggingface.co/datasets/{args.repo_id}"
+    )
 
 
 if __name__ == "__main__":

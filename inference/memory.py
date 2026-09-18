@@ -17,10 +17,10 @@ import logging
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -204,9 +204,11 @@ class ModelLifecycleManager:
             "system_available_mb": round(stats.system_available_mb, 1),
             "load_duration_s": round(self._load_duration_s, 3),
             "idle_timeout_s": self.idle_timeout_s,
-            "idle_s": round(time.time() - self._last_inference_time, 1)
-            if self._last_inference_time
-            else 0,
+            "idle_s": (
+                round(time.time() - self._last_inference_time, 1)
+                if self._last_inference_time
+                else 0
+            ),
             "budget": {
                 "max_loaded_ram_mb": self.budget.max_loaded_ram_mb,
                 "max_total_ram_mb": self.budget.max_total_ram_mb,

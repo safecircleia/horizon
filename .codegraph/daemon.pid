@@ -1,6 +1,6 @@
 {
-  "pid": 28859,
-  "version": "0.9.8",
+  "pid": 18416,
+  "version": "1.6.0",
   "socketPath": "/home/tomas/Documents/Github/SafeCircle/horizon/.codegraph/daemon.sock",
-  "startedAt": 1780393629668
+  "startedAt": 1789629989945
 }

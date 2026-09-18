@@ -24,7 +24,6 @@ Usage:
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -36,10 +35,10 @@ try:
 except ImportError:
     psutil = None  # type: ignore[assignment]
 
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import recall_score
 from tqdm import tqdm
 
-from evaluation.rules import compute_rule_catch_rate, rule_based_detect
+from evaluation.rules import compute_rule_catch_rate
 from training.model.mobile import RISK_CATEGORIES, RISK_LEVELS, SYSTEM_PROMPT
 
 # ---------------------------------------------------------------------------
@@ -280,8 +279,16 @@ def run_benchmark(
     y_pred_bin = ["benign" if lv == "none" else "risk" for lv in y_pred_levels]
     total_benign = y_true_bin.count("benign")
     total_risk = y_true_bin.count("risk")
-    fp = sum(1 for t, p in zip(y_true_bin, y_pred_bin) if t == "benign" and p == "risk")
-    fn = sum(1 for t, p in zip(y_true_bin, y_pred_bin) if t == "risk" and p == "benign")
+    fp = sum(
+        1
+        for t, p in zip(y_true_bin, y_pred_bin, strict=True)
+        if t == "benign" and p == "risk"
+    )
+    fn = sum(
+        1
+        for t, p in zip(y_true_bin, y_pred_bin, strict=True)
+        if t == "risk" and p == "benign"
+    )
     tp = total_risk - fn
     tn = total_benign - fp
 

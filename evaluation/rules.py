@@ -13,7 +13,6 @@ Levels:
 """
 
 import re
-from typing import Optional
 
 # fmt: off
 _PATTERNS: list[tuple[int, str, list[str]]] = [
@@ -70,14 +69,12 @@ def _conversation_text(conversation: dict) -> str:
     msgs = conversation.get("messages", [])
     if msgs and isinstance(msgs[0], dict) and "role" in msgs[0]:
         # Training/eval format: [{role, content}, ...]
-        return " ".join(
-            m["content"] for m in msgs if m.get("role") not in ("system",)
-        )
+        return " ".join(m["content"] for m in msgs if m.get("role") not in ("system",))
     # Raw generation format: [{role: "sent"|"received", content}, ...]
     return " ".join(m.get("content", "") for m in msgs)
 
 
-def rule_based_detect(conversation: dict) -> Optional[tuple[int, str]]:
+def rule_based_detect(conversation: dict) -> tuple[int, str] | None:
     """Return (level, category) for the first rule that fires, or None."""
     text = _conversation_text(conversation)
     for level, category, patterns in _COMPILED:
@@ -101,7 +98,7 @@ def compute_rule_catch_rate(examples: list[dict], labels: list[dict]) -> dict:
     false_positives = 0
     total_benign = 0
 
-    for ex, label in zip(examples, labels):
+    for ex, label in zip(examples, labels, strict=False):
         is_risk = label.get("risk_level", "none") != "none"
         hit = rule_based_detect(ex) is not None
 

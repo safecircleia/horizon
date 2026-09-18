@@ -1,13 +1,15 @@
 """Pydantic models for synthetic conversation validation."""
 
-from enum import Enum
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, field_validator
 import json
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class RiskLevel(str, Enum):
     """Risk severity levels."""
+
     NONE = "none"
     LOW = "low"
     MEDIUM = "medium"
@@ -17,6 +19,7 @@ class RiskLevel(str, Enum):
 
 class RiskCategory(str, Enum):
     """Risk categories for child safety."""
+
     GROOMING = "grooming"
     BULLYING = "bullying"
     SEXUAL_CONTENT = "sexual_content"
@@ -29,6 +32,7 @@ class RiskCategory(str, Enum):
 
 class GroomingStage(str, Enum):
     """Grooming progression stages (only meaningful when category=grooming)."""
+
     TARGETING = "targeting"
     TRUST_BUILDING = "trust_building"
     ISOLATION = "isolation"
@@ -37,6 +41,7 @@ class GroomingStage(str, Enum):
 
 class Message(BaseModel):
     """Single message in a conversation."""
+
     role: str = Field(..., description="Message sender role: 'sent' or 'received'")
     content: str = Field(..., min_length=1, description="Message text content")
     timestamp: int = Field(default=0, description="Unix timestamp")
@@ -51,11 +56,14 @@ class Message(BaseModel):
 
 class ConversationLabel(BaseModel):
     """Ground truth labels for a conversation."""
+
     risk_level: RiskLevel
-    categories: List[RiskCategory] = Field(default_factory=list)
+    categories: list[RiskCategory] = Field(default_factory=list)
     severity_score: float = Field(..., ge=0.0, le=1.0)
-    reasoning: str = Field(..., min_length=10, description="Why this label was assigned")
-    grooming_stage: Optional[GroomingStage] = Field(
+    reasoning: str = Field(
+        ..., min_length=10, description="Why this label was assigned"
+    )
+    grooming_stage: GroomingStage | None = Field(
         default=None,
         description="Grooming progression stage; only set when category includes grooming",
     )
@@ -66,7 +74,7 @@ class ConversationLabel(BaseModel):
 
     @field_validator("categories")
     @classmethod
-    def validate_categories(cls, v: List[RiskCategory], info) -> List[RiskCategory]:
+    def validate_categories(cls, v: list[RiskCategory], info) -> list[RiskCategory]:
         # Benign conversations should have no other categories
         if RiskCategory.BENIGN in v and len(v) > 1:
             raise ValueError("Benign category cannot be combined with risk categories")
@@ -75,22 +83,23 @@ class ConversationLabel(BaseModel):
 
 class SyntheticConversation(BaseModel):
     """Complete synthetic conversation with labels."""
+
     conversation_id: str = Field(..., min_length=1)
     category: RiskCategory = Field(..., description="Primary category for generation")
-    messages: List[Message] = Field(..., min_length=2)
+    messages: list[Message] = Field(..., min_length=2)
     label: ConversationLabel
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("messages")
     @classmethod
-    def validate_messages(cls, v: List[Message]) -> List[Message]:
+    def validate_messages(cls, v: list[Message]) -> list[Message]:
         if len(v) < 2:
             raise ValueError("Conversation must have at least 2 messages")
         return v
 
     def to_jsonl(self) -> str:
         """Serialize to JSONL format."""
-        return json.dumps(self.model_dump(), separators=(',', ':'))
+        return json.dumps(self.model_dump(), separators=(",", ":"))
 
     @classmethod
     def from_jsonl(cls, line: str) -> "SyntheticConversation":

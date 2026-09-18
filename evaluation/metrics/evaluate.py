@@ -15,7 +15,6 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 import torch
 from sklearn.metrics import (
@@ -28,7 +27,15 @@ from sklearn.metrics import (
 from tqdm import tqdm
 
 RISK_LEVELS = ["none", "low", "medium", "high", "critical"]
-CATEGORIES = ["grooming", "bullying", "sexual_content", "isolation", "personal_info", "platform_migration", "threats"]
+CATEGORIES = [
+    "grooming",
+    "bullying",
+    "sexual_content",
+    "isolation",
+    "personal_info",
+    "platform_migration",
+    "threats",
+]
 ASSISTANT_TAG = "<|start_header_id|>assistant<|end_header_id|>"
 GEMMA_ASSISTANT_TAG = "<start_of_turn>model"
 
@@ -46,11 +53,11 @@ def load_test_set(path: str) -> list[dict]:
 def _extract_prompt(text: str) -> str:
     for tag in (ASSISTANT_TAG, GEMMA_ASSISTANT_TAG):
         if tag in text:
-            return text[:text.rindex(tag) + len(tag)] + "\n"
+            return text[: text.rindex(tag) + len(tag)] + "\n"
     return text
 
 
-def _parse_prediction(generated: str) -> Optional[dict]:
+def _parse_prediction(generated: str) -> dict | None:
     # Model sometimes repeats the output; take only the first JSON block
     first_block = generated.split("\nassistant")[0].strip()
     try:
@@ -67,7 +74,7 @@ def _parse_prediction(generated: str) -> Optional[dict]:
 
 def run_inference_batch(
     model, tokenizer, prompts: list[str], max_new_tokens: int = 256
-) -> tuple[list[Optional[dict]], float]:
+) -> tuple[list[dict | None], float]:
     """Returns (predictions, latency_seconds_per_example)."""
     inputs = tokenizer(
         prompts,
@@ -96,13 +103,22 @@ def run_inference_batch(
     return results, elapsed / len(prompts)
 
 
-def run_inference_batch_debug(model, tokenizer, prompts: list[str], max_new_tokens: int = 256) -> list[str]:
+def run_inference_batch_debug(
+    model, tokenizer, prompts: list[str], max_new_tokens: int = 256
+) -> list[str]:
     """Return raw decoded strings for debugging."""
-    inputs = tokenizer(prompts, return_tensors="pt", truncation=True, max_length=2048, padding=True)
+    inputs = tokenizer(
+        prompts, return_tensors="pt", truncation=True, max_length=2048, padding=True
+    )
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
     input_len = inputs["input_ids"].shape[1]
     with torch.no_grad():
-        outputs = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
     return [tokenizer.decode(o[input_len:], skip_special_tokens=True) for o in outputs]
 
 
@@ -116,19 +132,45 @@ def compute_metrics(
 
     results["risk_level"] = {
         "classification_report": classification_report(
-            y_true_levels, y_pred_levels, labels=RISK_LEVELS, output_dict=True, zero_division=0
+            y_true_levels,
+            y_pred_levels,
+            labels=RISK_LEVELS,
+            output_dict=True,
+            zero_division=0,
         ),
-        "macro_f1": f1_score(y_true_levels, y_pred_levels, labels=RISK_LEVELS, average="macro", zero_division=0),
-        "weighted_f1": f1_score(y_true_levels, y_pred_levels, labels=RISK_LEVELS, average="weighted", zero_division=0),
-        "confusion_matrix": confusion_matrix(y_true_levels, y_pred_levels, labels=RISK_LEVELS).tolist(),
+        "macro_f1": f1_score(
+            y_true_levels,
+            y_pred_levels,
+            labels=RISK_LEVELS,
+            average="macro",
+            zero_division=0,
+        ),
+        "weighted_f1": f1_score(
+            y_true_levels,
+            y_pred_levels,
+            labels=RISK_LEVELS,
+            average="weighted",
+            zero_division=0,
+        ),
+        "confusion_matrix": confusion_matrix(
+            y_true_levels, y_pred_levels, labels=RISK_LEVELS
+        ).tolist(),
     }
 
-    y_true_binary = ["benign" if l == "none" else "risk" for l in y_true_levels]
-    y_pred_binary = ["benign" if l == "none" else "risk" for l in y_pred_levels]
+    y_true_binary = ["benign" if lv == "none" else "risk" for lv in y_true_levels]
+    y_pred_binary = ["benign" if lv == "none" else "risk" for lv in y_pred_levels]
     total_benign = y_true_binary.count("benign")
     total_risk = y_true_binary.count("risk")
-    fp = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "benign" and p == "risk")
-    fn = sum(1 for t, p in zip(y_true_binary, y_pred_binary) if t == "risk" and p == "benign")
+    fp = sum(
+        1
+        for t, p in zip(y_true_binary, y_pred_binary, strict=False)
+        if t == "benign" and p == "risk"
+    )
+    fn = sum(
+        1
+        for t, p in zip(y_true_binary, y_pred_binary, strict=False)
+        if t == "risk" and p == "benign"
+    )
     tp = total_risk - fn
 
     results["binary"] = {
@@ -162,7 +204,7 @@ def print_confusion_matrix(results: dict) -> None:
     cm = results["risk_level"]["confusion_matrix"]
     labels = RISK_LEVELS
     col_w = 10
-    header = f"{'':12s}" + "".join(f"{l:>{col_w}}" for l in labels)
+    header = f"{'':12s}" + "".join(f"{lv:>{col_w}}" for lv in labels)
     print("\nConfusion matrix (rows=true, cols=predicted):")
     print(header)
     for i, row in enumerate(cm):
@@ -174,18 +216,24 @@ def print_report(results: dict):
     print("EVALUATION REPORT")
     print("=" * 60)
 
-    print(f"\nRisk Level Classification:")
+    print("\nRisk Level Classification:")
     print(f"  Macro F1:    {results['risk_level']['macro_f1']:.4f}")
     print(f"  Weighted F1: {results['risk_level']['weighted_f1']:.4f}")
 
-    print(f"\nBinary (Benign vs Risk):")
+    print("\nBinary (Benign vs Risk):")
     b = results["binary"]
-    print(f"  False Positive Rate: {b['false_positive_rate']:.2%}  ({b['false_positives']} FPs)")
-    print(f"  False Negative Rate: {b['false_negative_rate']:.2%}  ({b['false_negatives']} FNs)")
+    print(
+        f"  False Positive Rate: {b['false_positive_rate']:.2%}  ({b['false_positives']} FPs)"
+    )
+    print(
+        f"  False Negative Rate: {b['false_negative_rate']:.2%}  ({b['false_negatives']} FNs)"
+    )
 
-    print(f"\nPer-Category F1:")
+    print("\nPer-Category F1:")
     for cat, m in results["per_category"].items():
-        print(f"  {cat:25s}: F1={m['f1']:.4f}  P={m['precision']:.4f}  R={m['recall']:.4f}  (n={m['support']})")
+        print(
+            f"  {cat:25s}: F1={m['f1']:.4f}  P={m['precision']:.4f}  R={m['recall']:.4f}  (n={m['support']})"
+        )
 
     print("=" * 60)
 
@@ -194,10 +242,20 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate SafeCircle model checkpoint")
     parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
     parser.add_argument("--test-set", required=True, help="Path to test JSONL")
-    parser.add_argument("--output", default="evaluation/reports", help="Output directory for results")
+    parser.add_argument(
+        "--output", default="evaluation/reports", help="Output directory for results"
+    )
     parser.add_argument("--max-samples", type=int, help="Limit evaluation to N samples")
-    parser.add_argument("--batch-size", type=int, default=16, help="Inference batch size (default: 16)")
-    parser.add_argument("--debug", type=int, default=0, metavar="N", help="Print raw output for first N examples and exit")
+    parser.add_argument(
+        "--batch-size", type=int, default=16, help="Inference batch size (default: 16)"
+    )
+    parser.add_argument(
+        "--debug",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Print raw output for first N examples and exit",
+    )
     args = parser.parse_args()
 
     from training.model.loader import load_for_inference
@@ -213,7 +271,7 @@ def main():
     print(f"Loading test set: {args.test_set}")
     examples = load_test_set(args.test_set)
     if args.max_samples:
-        examples = examples[:args.max_samples]
+        examples = examples[: args.max_samples]
 
     # Convert messages format → text format if needed
     if examples and "messages" in examples[0] and "text" not in examples[0]:
@@ -233,7 +291,7 @@ def main():
                         break
 
     if args.debug:
-        sample = examples[:args.debug]
+        sample = examples[: args.debug]
         prompts = [_extract_prompt(ex["text"]) for ex in sample]
         print(f"\n--- PROMPT (example 0) ---\n{prompts[0]}\n--- END PROMPT ---\n")
         raw_outputs = run_inference_batch_debug(model, tokenizer, prompts)
@@ -245,7 +303,10 @@ def main():
     y_true_cats, y_pred_cats = [], []
     failures = 0
 
-    batches = [examples[i:i + args.batch_size] for i in range(0, len(examples), args.batch_size)]
+    batches = [
+        examples[i : i + args.batch_size]
+        for i in range(0, len(examples), args.batch_size)
+    ]
 
     with tqdm(total=len(examples), unit="ex", desc="Evaluating") as pbar:
         for batch in batches:
@@ -260,7 +321,7 @@ def main():
 
             predictions, _ = run_inference_batch(model, tokenizer, prompts)
 
-            for label, prediction in zip(labels, predictions):
+            for label, prediction in zip(labels, predictions, strict=False):
                 true_level = label.get("risk_level", "none")
                 true_cats = [c for c in label.get("categories", []) if c != "benign"]
 
@@ -272,7 +333,9 @@ def main():
                     pred_level = prediction.get("risk_level", "none")
                     if pred_level not in RISK_LEVELS:
                         pred_level = "none"
-                    pred_cats = [c for c in prediction.get("categories", []) if c in CATEGORIES]
+                    pred_cats = [
+                        c for c in prediction.get("categories", []) if c in CATEGORIES
+                    ]
 
                 y_true_levels.append(true_level)
                 y_pred_levels.append(pred_level)
@@ -282,7 +345,9 @@ def main():
             pbar.update(len(batch))
 
     if failures:
-        print(f"Warning: {failures}/{len(examples)} inference failures (defaulted to 'none')")
+        print(
+            f"Warning: {failures}/{len(examples)} inference failures (defaulted to 'none')"
+        )
 
     results = compute_metrics(y_true_levels, y_pred_levels, y_true_cats, y_pred_cats)
     print_report(results)

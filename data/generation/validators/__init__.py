@@ -1,11 +1,11 @@
 """Data validation components for synthetic conversation generation."""
 
 from data.generation.validators.schemas import (
-    Message,
     ConversationLabel,
-    SyntheticConversation,
+    Message,
+    RiskCategory,
     RiskLevel,
-    RiskCategory
+    SyntheticConversation,
 )
 
 __all__ = [
