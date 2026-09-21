@@ -14,7 +14,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=38
-#SBATCH --gres=gpu:nvidia_h100_nvl
+#SBATCH --gres=gpu:nvidia_h200_nvl
 #SBATCH --mem=120G
 #SBATCH --time=24:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
@@ -86,7 +86,8 @@ for i in $(seq 1 60); do
 done
 
 # ── Generate all categories in parallel ──────────────────────────────────────
-CATEGORIES=(grooming bullying sexual_content isolation personal_info platform_migration threats benign)
+# Override with --export=CATEGORIES="grooming sexual_content" to regenerate a subset
+read -r -a CATEGORIES <<< "${CATEGORIES:-grooming bullying sexual_content isolation personal_info platform_migration threats benign}"
 
 declare -A CAT_COUNT=(
     [grooming]=80000 [bullying]=70000 [sexual_content]=70000
