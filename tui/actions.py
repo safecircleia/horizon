@@ -1,10 +1,9 @@
 """All TUI actions — maps menu items to SLURM jobs or local commands."""
 
-import os
 import subprocess
 from pathlib import Path
 
-from .slurm import sbatch, disk_usage
+from .slurm import disk_usage, sbatch
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -20,7 +19,9 @@ TRAIN_CONFIGS = {
 }
 
 
-def submit_training(config_name: str, resume_checkpoint: str = None) -> tuple[bool, str]:
+def submit_training(
+    config_name: str, resume_checkpoint: str = None
+) -> tuple[bool, str]:
     script = TRAIN_CONFIGS[config_name]
     export_vars = {}
     if resume_checkpoint:
@@ -30,6 +31,7 @@ def submit_training(config_name: str, resume_checkpoint: str = None) -> tuple[bo
 
 # ── Merge LoRA ───────────────────────────────────────────────────────────────
 
+
 def submit_merge(checkpoint: str, output: str) -> tuple[bool, str]:
     return sbatch(
         str(PROJECT_ROOT / "slurm/merge_lora.sbatch"),
@@ -38,6 +40,7 @@ def submit_merge(checkpoint: str, output: str) -> tuple[bool, str]:
 
 
 # ── Export LiteRT-LM ─────────────────────────────────────────────────────────
+
 
 def submit_export_edge(model_size: str) -> tuple[bool, str]:
     return sbatch(
@@ -62,6 +65,7 @@ def submit_export_mobile(checkpoint: str) -> tuple[bool, str]:
 
 # ── Evaluate ─────────────────────────────────────────────────────────────────
 
+
 def submit_evaluate(checkpoint: str) -> tuple[bool, str]:
     return sbatch(
         str(PROJECT_ROOT / "slurm/evaluate.sbatch"),
@@ -82,7 +86,9 @@ def submit_benchmark(checkpoint: str, save_baseline: bool = False) -> tuple[bool
 def create_benchmark_split() -> tuple[bool, str]:
     result = subprocess.run(
         ["python", "-m", "data.scripts.create_benchmark_split"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
     )
     return result.returncode == 0, result.stdout + result.stderr
 
@@ -92,6 +98,7 @@ def load_latest_benchmark_report() -> dict | None:
     if not report_path.exists():
         return None
     import json
+
     with open(report_path) as f:
         return json.load(f)
 
@@ -105,6 +112,7 @@ def submit_profile_mobile(model_path: str, runs: int = 10) -> tuple[bool, str]:
 
 # ── Test LiteRT-LM ──────────────────────────────────────────────────────────
 
+
 def submit_test_litert(model_path: str = None) -> tuple[bool, str]:
     export_vars = {}
     if model_path:
@@ -117,8 +125,18 @@ def submit_test_litert(model_path: str = None) -> tuple[bool, str]:
 
 # ── Upload ───────────────────────────────────────────────────────────────────
 
-def run_upload(what: str, version: str, skip_hf: bool = False, skip_r2: bool = False) -> tuple[bool, str]:
-    cmd = ["python", str(PROJECT_ROOT / "scripts/upload.py"), "--what", what, "--version", version]
+
+def run_upload(
+    what: str, version: str, skip_hf: bool = False, skip_r2: bool = False
+) -> tuple[bool, str]:
+    cmd = [
+        "python",
+        str(PROJECT_ROOT / "scripts/upload.py"),
+        "--what",
+        what,
+        "--version",
+        version,
+    ]
     if skip_hf:
         cmd.append("--skip-hf")
     if skip_r2:
@@ -131,6 +149,7 @@ def run_upload(what: str, version: str, skip_hf: bool = False, skip_r2: bool = F
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 
+
 def list_experiments() -> list[dict]:
     """List experiment directories with size info."""
     exp_dir = PROJECT_ROOT / "experiments"
@@ -139,16 +158,19 @@ def list_experiments() -> list[dict]:
     experiments = []
     for d in sorted(exp_dir.iterdir()):
         if d.is_dir():
-            experiments.append({
-                "name": d.name,
-                "path": str(d),
-                "size": disk_usage(str(d)),
-            })
+            experiments.append(
+                {
+                    "name": d.name,
+                    "path": str(d),
+                    "size": disk_usage(str(d)),
+                }
+            )
     return experiments
 
 
 def delete_experiment(path: str) -> tuple[bool, str]:
     import shutil
+
     try:
         shutil.rmtree(path)
         return True, f"Deleted {path}"
@@ -164,26 +186,32 @@ def list_models() -> list[dict]:
     models = []
     for d in sorted(models_dir.iterdir()):
         if d.is_dir():
-            models.append({
-                "name": d.name,
-                "path": str(d),
-                "size": disk_usage(str(d)),
-            })
+            models.append(
+                {
+                    "name": d.name,
+                    "path": str(d),
+                    "size": disk_usage(str(d)),
+                }
+            )
     return models
 
 
 # ── Maintenance ──────────────────────────────────────────────────────────────
 
+
 def update_deps() -> tuple[bool, str]:
     result = subprocess.run(
         ["uv", "pip", "install", "-r", "requirements.txt"],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        cwd=str(PROJECT_ROOT),
     )
     return result.returncode == 0, result.stdout + result.stderr
 
 
 def clear_tokenized_cache() -> tuple[bool, str]:
     import shutil
+
     cache = PROJECT_ROOT / "data/.tokenized_cache"
     if cache.exists():
         shutil.rmtree(cache)

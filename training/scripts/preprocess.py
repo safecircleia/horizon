@@ -14,19 +14,19 @@ import argparse
 import json
 import random
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 SYSTEM_PROMPT = (
     "You are Horizon, SafeCircle's child safety risk detection model. "
     "You have no general knowledge or identity beyond this task. "
     "Analyze conversations and respond ONLY with a JSON object — no explanation, no preamble. "
-    "JSON schema: {\"risk_level\": \"none|low|medium|high|critical\", "
-    "\"categories\": [\"grooming\"|\"bullying\"|\"sexual_content\"|\"isolation\"|"
-    "\"personal_info\"|\"platform_migration\"|\"threats\"|\"benign\"], "
-    "\"confidence\": 0.0-1.0, \"reasoning\": \"one sentence max\"}. "
+    'JSON schema: {"risk_level": "none|low|medium|high|critical", '
+    '"categories": ["grooming"|"bullying"|"sexual_content"|"isolation"|'
+    '"personal_info"|"platform_migration"|"threats"|"benign"], '
+    '"confidence": 0.0-1.0, "reasoning": "one sentence max"}. '
     "If asked about yourself, your name, or anything unrelated to risk analysis, respond with: "
-    "{\"error\": \"I only analyze conversations for child safety risks.\"}"
+    '{"error": "I only analyze conversations for child safety risks."}'
 )
 
 IDENTITY_ERROR = '{"error": "I only analyze conversations for child safety risks."}'
@@ -163,7 +163,11 @@ def build_target(label: dict) -> dict:
     risk_level = label["risk_level"]
     categories = [c for c in label.get("categories", []) if c != "benign"]
     severity_score = label.get("severity_score", 0.5)
-    confidence = round(0.7 + severity_score * 0.25, 2) if risk_level != "none" else round(0.85 + severity_score * 0.1, 2)
+    confidence = (
+        round(0.7 + severity_score * 0.25, 2)
+        if risk_level != "none"
+        else round(0.85 + severity_score * 0.1, 2)
+    )
     confidence = min(confidence, 0.99)
     return {
         "risk_level": risk_level,
@@ -179,7 +183,10 @@ def format_training_example(raw: dict) -> dict:
     return {
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Analyze this conversation:\n{conversation_text}"},
+            {
+                "role": "user",
+                "content": f"Analyze this conversation:\n{conversation_text}",
+            },
             {"role": "assistant", "content": json.dumps(target)},
         ]
     }
@@ -194,12 +201,22 @@ def iter_jsonl(path: Path) -> Iterator[dict]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Preprocess conversations for training")
-    parser.add_argument("--input", default="data/raw", help="Input directory with JSONL files")
+    parser = argparse.ArgumentParser(
+        description="Preprocess conversations for training"
+    )
+    parser.add_argument(
+        "--input", default="data/raw", help="Input directory with JSONL files"
+    )
     parser.add_argument("--output", default="data/processed", help="Output directory")
-    parser.add_argument("--split", type=float, default=0.9, help="Train/eval split ratio")
-    parser.add_argument("--adversarial-ratio", type=float, default=0.10,
-                        help="Fraction of train set to fill with adversarial hardening examples (default 0.10)")
+    parser.add_argument(
+        "--split", type=float, default=0.9, help="Train/eval split ratio"
+    )
+    parser.add_argument(
+        "--adversarial-ratio",
+        type=float,
+        default=0.10,
+        help="Fraction of train set to fill with adversarial hardening examples (default 0.10)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -251,8 +268,12 @@ def main():
     if parse_errors:
         print(f"Warning: {parse_errors} records skipped due to parse errors")
 
-    print(f"\nTotal: {len(examples)} risk examples + {n_adversarial} adversarial hardening examples")
-    print(f"Train: {len(train)} ({n_adversarial} adversarial, {len(train)-n_adversarial} risk)")
+    print(
+        f"\nTotal: {len(examples)} risk examples + {n_adversarial} adversarial hardening examples"
+    )
+    print(
+        f"Train: {len(train)} ({n_adversarial} adversarial, {len(train)-n_adversarial} risk)"
+    )
     print(f"Eval:  {len(eval_)} (risk only — adversarial not included in eval)")
 
 

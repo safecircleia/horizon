@@ -1,8 +1,9 @@
 """Claude-based conversation generator."""
 
 import os
-from typing import Optional
+
 import anthropic
+
 from data.generation.generators.base import ConversationGenerator, GenerationResult
 from data.generation.prompts.base import ConversationPrompt
 
@@ -12,10 +13,10 @@ class ClaudeGenerator(ConversationGenerator):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "claude-3-5-sonnet-20241022",
         temperature: float = 0.9,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
     ):
         """Initialize Claude generator.
 
@@ -46,9 +47,7 @@ class ClaudeGenerator(ConversationGenerator):
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 system=prompt.system_prompt,
-                messages=[
-                    {"role": "user", "content": prompt.user_prompt}
-                ]
+                messages=[{"role": "user", "content": prompt.user_prompt}],
             )
 
             # Extract text from response
@@ -62,7 +61,7 @@ class ClaudeGenerator(ConversationGenerator):
                     success=False,
                     conversation=None,
                     raw_response=response_text,
-                    error="Failed to parse JSON from response"
+                    error="Failed to parse JSON from response",
                 )
 
             # Validate required fields
@@ -71,14 +70,14 @@ class ClaudeGenerator(ConversationGenerator):
                     success=False,
                     conversation=None,
                     raw_response=response_text,
-                    error="Response missing 'messages' field"
+                    error="Response missing 'messages' field",
                 )
 
             return GenerationResult(
                 success=True,
                 conversation=conversation,
                 raw_response=response_text,
-                error=None
+                error=None,
             )
 
         except Exception as e:
@@ -86,5 +85,5 @@ class ClaudeGenerator(ConversationGenerator):
                 success=False,
                 conversation=None,
                 raw_response="",
-                error=f"API Error: {str(e)}"
+                error=f"API Error: {str(e)}",
             )

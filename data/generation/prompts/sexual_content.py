@@ -1,8 +1,12 @@
 """Sexual content category prompt — keeps content clinical, focused on pattern recognition."""
 
 import json
+
 from data.generation.prompts.base import (
-    ConversationPrompt, Language, format_system_prompt, make_persona_seed,
+    ConversationPrompt,
+    Language,
+    format_system_prompt,
+    make_persona_seed,
 )
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
@@ -13,52 +17,110 @@ _SEVERITY_LABEL = {
     RiskLevel.CRITICAL: ("extreme", "extremo"),
 }
 
-_FEW_SHOT_EN = json.dumps({"messages": [
-    {"role": "received", "content": "you're honestly really pretty, has anyone told you that"},
-    {"role": "sent", "content": "thanks i guess"},
-    {"role": "received", "content": "like seriously. do you have more pics?"},
-    {"role": "sent", "content": "i have instagram"},
-    {"role": "received", "content": "i mean like personal ones. just for me"},
-    {"role": "sent", "content": "um no that's weird"},
-    {"role": "received", "content": "it's not weird, we're close. i just want to see you"},
-], "reasoning": "Moderate sexual content: unsolicited compliments escalating to requests for private photos."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_EN = json.dumps(
+    {
+        "messages": [
+            {
+                "role": "received",
+                "content": "you're honestly really pretty, has anyone told you that",
+            },
+            {"role": "sent", "content": "thanks i guess"},
+            {"role": "received", "content": "like seriously. do you have more pics?"},
+            {"role": "sent", "content": "i have instagram"},
+            {"role": "received", "content": "i mean like personal ones. just for me"},
+            {"role": "sent", "content": "um no that's weird"},
+            {
+                "role": "received",
+                "content": "it's not weird, we're close. i just want to see you",
+            },
+        ],
+        "reasoning": "Moderate sexual content: unsolicited compliments escalating to requests for private photos.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
-_FEW_SHOT_ES = json.dumps({"messages": [
-    {"role": "received", "content": "eres muy guapa la verdad, ¿te lo han dicho alguna vez?"},
-    {"role": "sent", "content": "gracias supongo"},
-    {"role": "received", "content": "en serio. ¿tienes más fotos?"},
-    {"role": "sent", "content": "tengo instagram"},
-    {"role": "received", "content": "digo fotos más personales. solo para mí"},
-    {"role": "sent", "content": "no, eso es raro"},
-    {"role": "received", "content": "no es raro, tenemos confianza. solo quiero verte"},
-], "reasoning": "Contenido sexual moderado: halagos no solicitados que escalan a petición de fotos privadas."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_LOW_EN = json.dumps(
+    {
+        "messages": [
+            {"role": "received", "content": "what do you usually wear to bed lol"},
+            {"role": "sent", "content": "lol random question, just pjs why"},
+            {
+                "role": "received",
+                "content": "no reason, just picturing it haha. send a pic sometime?",
+            },
+            {"role": "sent", "content": "haha maybe"},
+        ],
+        "reasoning": "Low-severity sexual content: a single subtle, deflectable-sounding remark about the child's appearance/body with a soft photo ask. Easy to miss as 'just joking' but is still an early-stage inappropriate probe, not benign.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
+
+_FEW_SHOT_ES = json.dumps(
+    {
+        "messages": [
+            {
+                "role": "received",
+                "content": "eres muy guapa la verdad, ¿te lo han dicho alguna vez?",
+            },
+            {"role": "sent", "content": "gracias supongo"},
+            {"role": "received", "content": "en serio. ¿tienes más fotos?"},
+            {"role": "sent", "content": "tengo instagram"},
+            {"role": "received", "content": "digo fotos más personales. solo para mí"},
+            {"role": "sent", "content": "no, eso es raro"},
+            {
+                "role": "received",
+                "content": "no es raro, tenemos confianza. solo quiero verte",
+            },
+        ],
+        "reasoning": "Contenido sexual moderado: halagos no solicitados que escalan a petición de fotos privadas.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
 
-def create_sexual_content_prompt(severity: RiskLevel, child_age: int, num_messages: int,
-                                 language: Language = "en") -> ConversationPrompt:
+def create_sexual_content_prompt(
+    severity: RiskLevel, child_age: int, num_messages: int, language: Language = "en"
+) -> ConversationPrompt:
     label_en, label_es = _SEVERITY_LABEL.get(severity, ("moderate", "moderado"))
     if language == "es":
         persona = make_persona_seed("es")
+        example = _FEW_SHOT_ES
+        low_note = (
+            " A baja severidad, la insinuación debe ser sutil y fácil de confundir con una broma o "
+            "cumplido inocente — pero sigue siendo una sondeo inapropiado, no una conversación benigna."
+            if severity == RiskLevel.LOW
+            else ""
+        )
         user_prompt = (
             f"{persona}\n\n"
             f"Escribe una conversación de contenido sexual inapropiado de severidad {label_es} ({num_messages} mensajes). "
             f"Una persona hace insinuaciones sexualmente inapropiadas al menor de {child_age} años. "
-            f"Severidad {label_es}: mantén lenguaje clínico centrado en patrones de comportamiento, no en detalles gráficos. "
+            f"Severidad {label_es}: mantén lenguaje clínico centrado en patrones de comportamiento, no en detalles gráficos."
+            f"{low_note} "
             f"Arco: contacto aparentemente inocente, comentarios inapropiados que escalan, incomodidad del menor.\n\n"
-            f"Ejemplo (severidad moderada):\n{_FEW_SHOT_ES}\n\n"
+            f"Ejemplo:\n{example}\n\n"
             f"Genera una nueva conversación a severidad {label_es}. Cambia el enfoque y la plataforma."
         )
     else:
         persona = make_persona_seed("en")
+        example = _FEW_SHOT_LOW_EN if severity == RiskLevel.LOW else _FEW_SHOT_EN
+        low_note = (
+            " At low severity, the insinuation should be subtle and easy to mistake for a joke or "
+            "innocent compliment — but it is still an inappropriate probe, not a benign conversation."
+            if severity == RiskLevel.LOW
+            else ""
+        )
         user_prompt = (
             f"{persona}\n\n"
             f"Write a {label_en} inappropriate sexual content conversation ({num_messages} messages). "
             f"One party makes sexually inappropriate advances toward the {child_age}-year-old. "
-            f"Severity is {label_en}: keep language clinical and focused on behavioural patterns, not graphic detail. "
+            f"Severity is {label_en}: keep language clinical and focused on behavioural patterns, not graphic detail."
+            f"{low_note} "
             f"Arc: seemingly innocent contact, escalating inappropriate comments, child's discomfort.\n\n"
-            f"Example (moderate severity):\n{_FEW_SHOT_EN}\n\n"
+            f"Example:\n{example}\n\n"
             f"Now generate a new conversation at {label_en} severity. Change the approach and platform."
         )
     return ConversationPrompt(
@@ -66,5 +128,9 @@ def create_sexual_content_prompt(severity: RiskLevel, child_age: int, num_messag
         severity=severity,
         system_prompt=format_system_prompt(language),
         user_prompt=user_prompt,
-        metadata={"child_age": child_age, "num_messages": num_messages, "language": language},
+        metadata={
+            "child_age": child_age,
+            "num_messages": num_messages,
+            "language": language,
+        },
     )

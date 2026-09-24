@@ -33,9 +33,19 @@ def _detect_base_model(checkpoint_path: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True, help="Path to LoRA checkpoint (adapter weights)")
-    parser.add_argument("--output", default="models/horizon-full-merged", help="Output path for merged model")
-    parser.add_argument("--base-model", default=None, help="Base model ID (auto-detected from adapter_config.json if omitted)")
+    parser.add_argument(
+        "--checkpoint", required=True, help="Path to LoRA checkpoint (adapter weights)"
+    )
+    parser.add_argument(
+        "--output",
+        default="models/horizon-full-merged",
+        help="Output path for merged model",
+    )
+    parser.add_argument(
+        "--base-model",
+        default=None,
+        help="Base model ID (auto-detected from adapter_config.json if omitted)",
+    )
     args = parser.parse_args()
 
     checkpoint = Path(args.checkpoint).resolve()
