@@ -10,12 +10,12 @@
 # Run from: /slurm/home/$USER/safecircle/horizon
 
 #SBATCH --job-name=horizon-generate
-#SBATCH --partition=gpuMax
+#SBATCH --partition=gpuUltra
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=38
-#SBATCH --gres=gpu:nvidia_h200_nvl
-#SBATCH --mem=120G
+#SBATCH --cpus-per-task=24
+#SBATCH --gres=gpu:nvidia_h100_nvl
+#SBATCH --mem=24G
 #SBATCH --time=24:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out
 #SBATCH --error=/slurm/home/%u/output/%j/terminal.err
