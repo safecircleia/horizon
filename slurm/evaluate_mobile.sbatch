@@ -33,7 +33,11 @@ TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
 
 echo "Copying project to scratch: $SCRATCH"
 mkdir -p "$SCRATCH"
-rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' "$REPO/" "$SCRATCH/"
+rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' \
+    --exclude 'data/raw' --exclude 'data/raw_severity' \
+    --exclude 'data/processed' --exclude 'data/processed_combined' --exclude 'data/processed_severity' \
+    --exclude '.cache' \
+    "$REPO/" "$SCRATCH/"
 
 cleanup() {
     echo "Syncing results back to repo..."

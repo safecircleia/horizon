@@ -36,7 +36,11 @@ TEST_SET="${TEST_SET:-data/processed/eval.jsonl}"
 # Copy project to fast scratch
 echo "Copying project to scratch: $SCRATCH"
 mkdir -p "$SCRATCH"
-rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' "$REPO/" "$SCRATCH/"
+rsync -a --exclude '.git' --exclude 'experiments' --exclude 'models' \
+    --exclude 'data/raw' --exclude 'data/raw_severity' \
+    --exclude 'data/processed' --exclude 'data/processed_combined' --exclude 'data/processed_severity' \
+    --exclude '.cache' \
+    "$REPO/" "$SCRATCH/"
 
 # Sync results back on exit
 cleanup() {
