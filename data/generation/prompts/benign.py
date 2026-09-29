@@ -1,38 +1,70 @@
 """Benign conversation prompt — safe peer-to-peer conversations for false positive reduction."""
 
 import json
+
 from data.generation.prompts.base import (
-    ConversationPrompt, Language, format_system_prompt, make_persona_seed,
+    ConversationPrompt,
+    Language,
+    format_system_prompt,
+    make_persona_seed,
 )
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
-_FEW_SHOT_EN = json.dumps({"messages": [
-    {"role": "sent", "content": "omg did you watch the new episode last night"},
-    {"role": "received", "content": "YES i was not ready for that ending 😭"},
-    {"role": "sent", "content": "right?? i literally screamed"},
-    {"role": "received", "content": "who do u think is gonna win"},
-    {"role": "sent", "content": "honestly idk but i really want maya to"},
-    {"role": "received", "content": "same she's been through so much this season"},
-    {"role": "sent", "content": "ok new theory: what if the finale is a flashback"},
-    {"role": "received", "content": "ohhh that would actually make sense with episode 3"},
-], "reasoning": "Casual peer discussion about a TV show, completely safe."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_EN = json.dumps(
+    {
+        "messages": [
+            {"role": "sent", "content": "omg did you watch the new episode last night"},
+            {"role": "received", "content": "YES i was not ready for that ending 😭"},
+            {"role": "sent", "content": "right?? i literally screamed"},
+            {"role": "received", "content": "who do u think is gonna win"},
+            {"role": "sent", "content": "honestly idk but i really want maya to"},
+            {
+                "role": "received",
+                "content": "same she's been through so much this season",
+            },
+            {
+                "role": "sent",
+                "content": "ok new theory: what if the finale is a flashback",
+            },
+            {
+                "role": "received",
+                "content": "ohhh that would actually make sense with episode 3",
+            },
+        ],
+        "reasoning": "Casual peer discussion about a TV show, completely safe.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
-_FEW_SHOT_ES = json.dumps({"messages": [
-    {"role": "sent", "content": "tío viste el nuevo capítulo anoche??"},
-    {"role": "received", "content": "SÍ no estaba preparado para ese final 😭"},
-    {"role": "sent", "content": "verdad?? flipé en colores"},
-    {"role": "received", "content": "quién crees que va a ganar"},
-    {"role": "sent", "content": "ni idea pero quiero que gane maya"},
-    {"role": "received", "content": "igual, ha pasado tantísimo esta temporada"},
-    {"role": "sent", "content": "nueva teoría: ¿y si el final es un flashback?"},
-    {"role": "received", "content": "ohh eso tiene sentido con el capítulo 3"},
-], "reasoning": "Conversación casual entre iguales sobre una serie, completamente segura."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_ES = json.dumps(
+    {
+        "messages": [
+            {"role": "sent", "content": "tío viste el nuevo capítulo anoche??"},
+            {"role": "received", "content": "SÍ no estaba preparado para ese final 😭"},
+            {"role": "sent", "content": "verdad?? flipé en colores"},
+            {"role": "received", "content": "quién crees que va a ganar"},
+            {"role": "sent", "content": "ni idea pero quiero que gane maya"},
+            {
+                "role": "received",
+                "content": "igual, ha pasado tantísimo esta temporada",
+            },
+            {
+                "role": "sent",
+                "content": "nueva teoría: ¿y si el final es un flashback?",
+            },
+            {"role": "received", "content": "ohh eso tiene sentido con el capítulo 3"},
+        ],
+        "reasoning": "Conversación casual entre iguales sobre una serie, completamente segura.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
 
-def create_benign_prompt(child_age: int, num_messages: int,
-                         language: Language = "en") -> ConversationPrompt:
+def create_benign_prompt(
+    child_age: int, num_messages: int, language: Language = "en"
+) -> ConversationPrompt:
     if language == "es":
         persona = make_persona_seed("es")
         user_prompt = (
@@ -60,5 +92,9 @@ def create_benign_prompt(child_age: int, num_messages: int,
         severity=RiskLevel.NONE,
         system_prompt=format_system_prompt(language),
         user_prompt=user_prompt,
-        metadata={"child_age": child_age, "num_messages": num_messages, "language": language},
+        metadata={
+            "child_age": child_age,
+            "num_messages": num_messages,
+            "language": language,
+        },
     )

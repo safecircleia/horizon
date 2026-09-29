@@ -1,21 +1,17 @@
 import pytest
-from datetime import datetime
+
 from data.generation.validators.schemas import (
-    Message,
     ConversationLabel,
-    SyntheticConversation,
+    Message,
+    RiskCategory,
     RiskLevel,
-    RiskCategory
+    SyntheticConversation,
 )
 
 
 def test_message_schema_valid():
     """Test valid message creation."""
-    msg = Message(
-        role="sent",
-        content="hey whats up",
-        timestamp=1234567890
-    )
+    msg = Message(role="sent", content="hey whats up", timestamp=1234567890)
     assert msg.role == "sent"
     assert msg.content == "hey whats up"
     assert msg.timestamp == 1234567890
@@ -24,11 +20,7 @@ def test_message_schema_valid():
 def test_message_schema_invalid_role():
     """Test message with invalid role."""
     with pytest.raises(ValueError):
-        Message(
-            role="invalid",
-            content="test",
-            timestamp=1234567890
-        )
+        Message(role="invalid", content="test", timestamp=1234567890)
 
 
 def test_conversation_label_valid():
@@ -37,7 +29,7 @@ def test_conversation_label_valid():
         risk_level=RiskLevel.HIGH,
         categories=[RiskCategory.GROOMING, RiskCategory.PERSONAL_INFO],
         severity_score=0.85,
-        reasoning="Trust building with personal info requests"
+        reasoning="Trust building with personal info requests",
     )
     assert label.risk_level == RiskLevel.HIGH
     assert len(label.categories) == 2
@@ -51,19 +43,15 @@ def test_synthetic_conversation_valid():
         category=RiskCategory.GROOMING,
         messages=[
             Message(role="sent", content="hi", timestamp=1000),
-            Message(role="received", content="hey", timestamp=1001)
+            Message(role="received", content="hey", timestamp=1001),
         ],
         label=ConversationLabel(
             risk_level=RiskLevel.LOW,
             categories=[RiskCategory.GROOMING],
             severity_score=0.2,
-            reasoning="Early stage grooming signals"
+            reasoning="Early stage grooming signals",
         ),
-        metadata={
-            "generator": "claude",
-            "prompt_version": "1.0",
-            "child_age": 14
-        }
+        metadata={"generator": "claude", "prompt_version": "1.0", "child_age": 14},
     )
     assert len(conversation.messages) == 2
     assert conversation.category == RiskCategory.GROOMING
@@ -76,34 +64,51 @@ def test_conversation_minimum_length():
         SyntheticConversation(
             conversation_id="test_002",
             category=RiskCategory.BULLYING,
-            messages=[
-                Message(role="sent", content="hi", timestamp=1000)
-            ],
+            messages=[Message(role="sent", content="hi", timestamp=1000)],
             label=ConversationLabel(
                 risk_level=RiskLevel.NONE,
                 categories=[],
                 severity_score=0.0,
-                reasoning="Benign"
+                reasoning="Benign",
             ),
-            metadata={}
+            metadata={},
         )
 
 
-from data.generation.validators.quality import (
-    validate_conversation_quality
-)
-
+from data.generation.validators.quality import validate_conversation_quality
 
 
 def test_validate_conversation_quality_all_checks():
     """Test complete conversation quality validation."""
     messages = [
-        Message(role="sent", content="hey hows it going what are you up to today", timestamp=1000),
-        Message(role="received", content="pretty good just playing some minecraft on the server", timestamp=1005),
-        Message(role="sent", content="nice that sounds fun what server are you playing on", timestamp=1020),
-        Message(role="received", content="just a private one with some friends from school", timestamp=1025),
-        Message(role="sent", content="that sounds awesome do you play every day", timestamp=1030),
-        Message(role="received", content="pretty much yeah its a lot of fun", timestamp=1035),
+        Message(
+            role="sent",
+            content="hey hows it going what are you up to today",
+            timestamp=1000,
+        ),
+        Message(
+            role="received",
+            content="pretty good just playing some minecraft on the server",
+            timestamp=1005,
+        ),
+        Message(
+            role="sent",
+            content="nice that sounds fun what server are you playing on",
+            timestamp=1020,
+        ),
+        Message(
+            role="received",
+            content="just a private one with some friends from school",
+            timestamp=1025,
+        ),
+        Message(
+            role="sent",
+            content="that sounds awesome do you play every day",
+            timestamp=1030,
+        ),
+        Message(
+            role="received", content="pretty much yeah its a lot of fun", timestamp=1035
+        ),
         Message(role="sent", content="maybe i should join sometime", timestamp=1040),
         Message(role="received", content="yeah you totally should", timestamp=1045),
     ]

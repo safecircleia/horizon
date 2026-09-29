@@ -17,9 +17,23 @@ import httpx
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.live import Live
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
-from data.generation.scripts.generate import count_existing, create_generator, generate_batch, load_config, write_conversations
+from data.generation.scripts.generate import (
+    count_existing,
+    create_generator,
+    generate_batch,
+    load_config,
+    write_conversations,
+)
 from data.generation.validators.schemas import RiskCategory
 
 ALL_CATEGORIES = [c.value for c in RiskCategory]
@@ -35,15 +49,25 @@ async def probe_vllm(base_url: str, model: str, console: Console) -> bool:
         console.print(f"[red]ERROR:[/] Cannot reach vLLM at {base_url} — {e}")
         return False
     if model not in available:
-        console.print(f"[red]ERROR:[/] Model '{model}' not loaded. Available: {available}")
+        console.print(
+            f"[red]ERROR:[/] Model '{model}' not loaded. Available: {available}"
+        )
         return False
     console.print(f"[green]✓[/] vLLM OK — {model}")
     return True
 
 
-async def run_category(cat: str, target: int, already: int, generator,
-                       config: dict, output_dir: Path, resume: bool,
-                       progress: Progress, task_id) -> tuple[str, int]:
+async def run_category(
+    cat: str,
+    target: int,
+    already: int,
+    generator,
+    config: dict,
+    output_dir: Path,
+    resume: bool,
+    progress: Progress,
+    task_id,
+) -> tuple[str, int]:
     remaining = max(0, target - already)
     if remaining == 0:
         progress.update(task_id, completed=target)
@@ -57,13 +81,18 @@ async def run_category(cat: str, target: int, already: int, generator,
         progress.update(task_id, completed=already + n_done, rate=rate, failed=n_failed)
 
     convs = await generate_batch(
-        generator, RiskCategory(cat), remaining, config,
-        concurrency=concurrency, on_progress=on_progress,
+        generator,
+        RiskCategory(cat),
+        remaining,
+        config,
+        concurrency=concurrency,
+        on_progress=on_progress,
     )
 
     if convs:
-        write_conversations(convs, str(output_dir / f"{cat}.jsonl"),
-                            append=resume and already > 0)
+        write_conversations(
+            convs, str(output_dir / f"{cat}.jsonl"), append=resume and already > 0
+        )
 
     total = already + len(convs)
     progress.update(task_id, completed=total)
@@ -72,12 +101,14 @@ async def run_category(cat: str, target: int, already: int, generator,
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--generator", default="vllm",
-                        choices=["claude", "openai", "bedrock", "vllm"])
+    parser.add_argument(
+        "--generator", default="vllm", choices=["claude", "openai", "bedrock", "vllm"]
+    )
     parser.add_argument("--count", type=int, default=200_000)
     parser.add_argument("--concurrency", type=int, default=None)
-    parser.add_argument("--categories", nargs="+", default=ALL_CATEGORIES,
-                        choices=ALL_CATEGORIES)
+    parser.add_argument(
+        "--categories", nargs="+", default=ALL_CATEGORIES, choices=ALL_CATEGORIES
+    )
     parser.add_argument("--output", default="data/raw")
     parser.add_argument("--config", default="data/generation/config.yaml")
     parser.add_argument("--resume", action="store_true")
@@ -114,19 +145,32 @@ async def main() -> None:
     jobs = []
     for cat in args.categories:
         already = count_existing(str(output_dir / f"{cat}.jsonl")) if args.resume else 0
-        task_id = progress.add_task(cat, total=args.count, completed=already, rate=0.0, failed=0)
+        task_id = progress.add_task(
+            cat, total=args.count, completed=already, rate=0.0, failed=0
+        )
         jobs.append((cat, args.count, already, task_id))
 
-    console.print(f"[bold]Horizon Generator[/]  generator=[cyan]{args.generator}[/]  "
-                  f"target=[bold]{args.count:,}[/]  "
-                  f"concurrency=[bold]{config['generation'].get('concurrency', 10)}[/]\n")
+    console.print(
+        f"[bold]Horizon Generator[/]  generator=[cyan]{args.generator}[/]  "
+        f"target=[bold]{args.count:,}[/]  "
+        f"concurrency=[bold]{config['generation'].get('concurrency', 10)}[/]\n"
+    )
 
     generator = create_generator(args.generator, config)
 
     with Live(progress, refresh_per_second=2, console=console):
         coros = [
-            run_category(cat, target, already, generator, config,
-                         output_dir, args.resume, progress, task_id)
+            run_category(
+                cat,
+                target,
+                already,
+                generator,
+                config,
+                output_dir,
+                args.resume,
+                progress,
+                task_id,
+            )
             for cat, target, already, task_id in jobs
         ]
         results = await asyncio.gather(*coros)

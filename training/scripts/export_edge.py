@@ -46,35 +46,38 @@ VARIANTS = [
 ]
 
 
-def export_variant(model_dir: str, output_dir: str, model_size: str, suffix: str, label: str) -> bool:
+def export_variant(
+    model_dir: str, output_dir: str, model_size: str, suffix: str, label: str
+) -> bool:
     """Export one variant using litert-torch export_hf."""
     out_path = Path(output_dir) / f"variant{suffix}"
     out_path.mkdir(parents=True, exist_ok=True)
 
     chat_template_repo = CHAT_TEMPLATE_REPO[model_size]
-    is_web = suffix == "-web"
 
     cmd = [
-        "litert-torch", "export_hf",
+        "litert-torch",
+        "export_hf",
         f"--model={model_dir}",
         f"--output_dir={out_path}",
         "--externalize_embedder",
         f"--jinja_chat_template_override={chat_template_repo}",
     ]
 
-
     if suffix:
         target = suffix.lstrip("_").lstrip("-")
         cmd.append(f"--target={target}")
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Exporting: {label} (suffix={suffix or 'none'})")
     print(f"Command: {' '.join(cmd)}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     result = subprocess.run(cmd, capture_output=False)
     if result.returncode != 0:
-        print(f"WARNING: export failed for variant '{label}' (exit {result.returncode})")
+        print(
+            f"WARNING: export failed for variant '{label}' (exit {result.returncode})"
+        )
         return False
 
     litertlm_files = list(out_path.glob("*.litertlm"))
@@ -95,21 +98,27 @@ def main():
         description="Export Gemma 4 E2B/E4B to LiteRT-LM variants"
     )
     parser.add_argument(
-        "--model-dir", required=True,
-        help="Path to merged safetensors model (e.g. models/horizon-edge-2b-merged)"
+        "--model-dir",
+        required=True,
+        help="Path to merged safetensors model (e.g. models/horizon-edge-2b-merged)",
     )
     parser.add_argument(
-        "--output", default="models/horizon-edge-2b-litert",
-        help="Output directory for .litertlm files"
+        "--output",
+        default="models/horizon-edge-2b-litert",
+        help="Output directory for .litertlm files",
     )
     parser.add_argument(
-        "--model-size", required=True, choices=["e2b", "e4b"],
-        help="Model size (e2b or e4b)"
+        "--model-size",
+        required=True,
+        choices=["e2b", "e4b"],
+        help="Model size (e2b or e4b)",
     )
     parser.add_argument(
-        "--variants", nargs="*", default=None,
+        "--variants",
+        nargs="*",
+        default=None,
         help="Specific variant suffixes to export (default: all). "
-             "Options: general, Google_Tensor_G5, intel_LNL, intel_PTL, qualcomm_qcs8275, qualcomm_sm8750, web"
+        "Options: general, Google_Tensor_G5, intel_LNL, intel_PTL, qualcomm_qcs8275, qualcomm_sm8750, web",
     )
     args = parser.parse_args()
 
@@ -124,11 +133,19 @@ def main():
     variants_to_export = VARIANTS
     if args.variants:
         requested = set(args.variants)
-        variants_to_export = [v for v in VARIANTS if v["label"].split(" ")[0].lower() in requested
-                              or v["suffix"].lstrip("_").lstrip("-") in requested
-                              or v["label"] in requested]
+        variants_to_export = [
+            v
+            for v in VARIANTS
+            if v["label"].split(" ")[0].lower() in requested
+            or v["suffix"].lstrip("_").lstrip("-") in requested
+            or v["label"] in requested
+        ]
         if not variants_to_export:
-            variants_to_export = [v for v in VARIANTS if any(r in v["suffix"] or r in v["label"] for r in requested)]
+            variants_to_export = [
+                v
+                for v in VARIANTS
+                if any(r in v["suffix"] or r in v["label"] for r in requested)
+            ]
 
     print(f"Model: {model_dir}")
     print(f"Output: {output_dir}")
@@ -146,9 +163,9 @@ def main():
         )
         results.append((variant["label"], ok))
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Export Summary:")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for label, ok in results:
         status = "OK" if ok else "FAILED"
         print(f"  [{status}] {label}")

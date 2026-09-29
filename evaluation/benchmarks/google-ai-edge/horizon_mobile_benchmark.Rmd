@@ -1,0 +1,448 @@
+---
+title: "Horizon Mobile Benchmark --- Google AI Edge"
+subtitle: "Int4-Q4 vs Int8-Q8 · 60 Devices"
+date: "June 2026"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    latex_engine: xelatex
+    fig_width: 6.5
+    fig_height: 3.8
+    number_sections: false
+    extra_dependencies: ["booktabs", "float", "geometry"]
+    includes:
+      in_header: null
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    df_print: kable
+    fig_width: 10
+    fig_height: 5.5
+geometry: "margin=1in"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE, message = FALSE, warning = FALSE,
+  fig.align = "center",
+  fig.pos = "H",
+  out.width = "100%"
+)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)
+library(tibble)
+library(knitr)
+
+theme_hz <- function(base = 11) {
+  theme_minimal(base_size = base) +
+    theme(
+      plot.title    = element_text(face = "bold", size = base + 2, margin = margin(b = 5)),
+      plot.subtitle = element_text(color = "grey45", size = base - 1, margin = margin(b = 8)),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(color = "grey92"),
+      strip.text    = element_text(face = "bold", size = base),
+      legend.position = "bottom",
+      legend.text   = element_text(size = base - 1),
+      axis.text     = element_text(size = base - 2),
+      plot.caption  = element_text(color = "grey60", size = base - 3, margin = margin(t = 6))
+    )
+}
+
+Q4_COL <- "#2196F3"
+Q8_COL <- "#FF5722"
+TIER_COLS <- c("High tier" = "#1565C0", "Mid tier" = "#43A047", "Low tier" = "#F57C00")
+```
+
+```{r load-data}
+df <- read.csv("horizon_mobile_2.csv", stringsAsFactors = FALSE)
+
+df <- df %>%
+  mutate(
+    across(c(First.Initialization.Time..ms., Steady.Initialization.Time..ms.,
+             Time.to.First.Token..ms., Prefill.tokens.sec..Avg.,
+             Decode.tokens.sec..Avg., Peak.memory..MB., RAM..GB.),
+           as.numeric),
+    Year.released = as.integer(Year.released),
+    config = Runtime.config,
+    Device.tier = factor(Device.tier, levels = c("High tier", "Mid tier", "Low tier"))
+  )
+
+q4 <- df %>% filter(config == "Int4-Q4")
+q8 <- df %>% filter(config == "Int8-Q8")
+
+paired <- inner_join(
+  q4 %>% select(Device.name, Device.tier, Year.released, Processor, GPU.make,
+                d4 = Decode.tokens.sec..Avg., m4 = Peak.memory..MB.,
+                ttft4 = Time.to.First.Token..ms., init4 = First.Initialization.Time..ms.,
+                pre4 = Prefill.tokens.sec..Avg.),
+  q8 %>% select(Device.name, d8 = Decode.tokens.sec..Avg., m8 = Peak.memory..MB.,
+                ttft8 = Time.to.First.Token..ms., init8 = First.Initialization.Time..ms.,
+                pre8 = Prefill.tokens.sec..Avg.),
+  by = "Device.name"
+) %>%
+  mutate(
+    decode_speedup = d4 / d8,
+    memory_saving  = m8 - m4,
+    memory_pct     = (m8 - m4) / m8,
+    proc_family = case_when(
+      grepl("8 Gen [23]", Processor)    ~ "SD 8 Gen 2/3",
+      grepl("8 Gen 1|8\\+ Gen", Processor) ~ "SD 8 Gen 1/8+",
+      grepl("Tensor G4", Processor)     ~ "Tensor G4",
+      grepl("Tensor G3", Processor)     ~ "Tensor G3",
+      grepl("Tensor G2", Processor)     ~ "Tensor G2",
+      grepl("Tensor", Processor)        ~ "Tensor G1",
+      grepl("Snapdragon [67]|Snapdragon 6", Processor) ~ "SD 6/7xx",
+      grepl("Exynos", Processor)        ~ "Exynos",
+      grepl("Dimensity|Helio", Processor) ~ "MediaTek",
+      grepl("Unisoc", Processor)        ~ "Unisoc",
+      TRUE ~ "Other"
+    )
+  )
+```
+
+\newpage
+
+## Overview
+
+This report analyses **Horizon Mobile** benchmarked by Google AI Edge across **60 Android devices** (120 rows), comparing Int4-Q4 and Int8-Q8 quantisation.
+
+```{r overview-table}
+df %>%
+  group_by(Config = config, Tier = Device.tier) %>%
+  summarise(
+    `N` = n(),
+    `Decode (tok/s)` = round(mean(Decode.tokens.sec..Avg.), 1),
+    `TTFT (ms)` = round(mean(Time.to.First.Token..ms.)),
+    `Mem (MB)` = round(mean(Peak.memory..MB.)),
+    `Init (ms)` = round(mean(First.Initialization.Time..ms.)),
+    .groups = "drop"
+  ) %>%
+  kable(booktabs = TRUE, linesep = "")
+```
+
+\newpage
+
+## 1. Q4 vs Q8 --- All Metrics
+
+```{r global-comparison}
+global <- df %>%
+  group_by(config) %>%
+  summarise(
+    `Decode\ntok/s`        = mean(Decode.tokens.sec..Avg.),
+    `Prefill\ntok/s`       = mean(Prefill.tokens.sec..Avg.),
+    `TTFT\n(ms/100)`       = mean(Time.to.First.Token..ms.) / 100,
+    `First init\n(ms/100)` = mean(First.Initialization.Time..ms.) / 100,
+    `Peak mem\n(MB/10)`    = mean(Peak.memory..MB.) / 10,
+    .groups = "drop"
+  ) %>%
+  pivot_longer(-config, names_to = "metric", values_to = "value")
+
+ggplot(global, aes(x = metric, y = value, fill = config)) +
+  geom_col(position = "dodge", width = 0.6, alpha = 0.9) +
+  scale_fill_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL),
+                    name = "Quantisation") +
+  labs(title = "Q4 vs Q8 - Global Average on Every Metric",
+       subtitle = "Time/memory metrics scaled for comparability.",
+       x = NULL, y = "Value (scaled)") +
+  theme_hz()
+```
+
+```{r winner-table}
+tribble(
+  ~Metric,                   ~`Q4 Avg`, ~`Q8 Avg`, ~`Q4/Q8`, ~Winner,
+  "First init (ms)",         "3,532",   "5,938",   "0.60x",  "Q4",
+  "Steady init (ms)",        "2,612",   "3,470",   "0.75x",  "Q4",
+  "Time to first token (ms)","8,163",   "7,208",   "1.13x",  "Q8",
+  "Prefill (tok/s)",         "202",     "238",     "0.85x",  "Q8",
+  "Decode (tok/s)",          "31.4",    "19.4",    "1.62x",  "Q4",
+  "Peak memory (MB)",        "1,184",   "1,805",   "0.66x",  "Q4"
+) %>%
+  kable(booktabs = TRUE, linesep = "")
+```
+
+\newpage
+
+## 2. Decode Speed Distribution
+
+```{r decode-density}
+ggplot(df, aes(x = Decode.tokens.sec..Avg., fill = config, colour = config)) +
+  geom_density(alpha = 0.35, linewidth = 0.9) +
+  geom_vline(
+    data = df %>% group_by(config) %>% summarise(m = mean(Decode.tokens.sec..Avg.)),
+    aes(xintercept = m, colour = config), linetype = "dashed", linewidth = 1
+  ) +
+  scale_fill_manual(values  = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_colour_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_x_continuous(labels = label_number(suffix = " tok/s")) +
+  labs(title = "Decode Speed Distribution",
+       subtitle = "Dashed lines = group mean. Q4 is shifted right and wider.",
+       x = "Decode speed (tok/s)", y = "Density",
+       fill = "Quantisation", colour = "Quantisation") +
+  theme_hz()
+```
+
+```{r decode-threshold}
+thresholds <- c(10, 15, 20, 25, 30, 40, 50, 60)
+thresh_df <- bind_rows(lapply(thresholds, function(t) {
+  data.frame(
+    threshold = t,
+    config = c("Int4-Q4", "Int8-Q8"),
+    pct = c(
+      mean(q4$Decode.tokens.sec..Avg. >= t) * 100,
+      mean(q8$Decode.tokens.sec..Avg. >= t) * 100
+    )
+  )
+}))
+
+ggplot(thresh_df, aes(x = factor(threshold), y = pct, fill = config)) +
+  geom_col(position = "dodge", width = 0.65, alpha = 0.9) +
+  geom_text(aes(label = paste0(round(pct), "%")),
+            position = position_dodge(width = 0.65), vjust = -0.4, size = 2.8) +
+  scale_fill_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_y_continuous(labels = label_percent(scale = 1), limits = c(0, 115)) +
+  labs(title = "% of Devices Meeting Decode Speed Threshold",
+       subtitle = "No Q8 device reaches 40 tok/s. Q4 hits it on 25% of devices.",
+       x = "Minimum decode speed (tok/s)", y = "% of devices",
+       fill = "Quantisation") +
+  theme_hz()
+```
+
+\newpage
+
+## 3. Decode Speed by Device Tier
+
+```{r decode-by-tier}
+ggplot(df, aes(x = Device.tier, y = Decode.tokens.sec..Avg.,
+               fill = config, colour = config)) +
+  geom_boxplot(alpha = 0.4, outlier.shape = 21, outlier.size = 1.5,
+               position = position_dodge(0.8), width = 0.6) +
+  scale_fill_manual(values  = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_colour_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_y_continuous(labels = label_number(suffix = " tok/s")) +
+  labs(title = "Decode Speed by Device Tier",
+       subtitle = "Q4 advantage is consistent across all tiers",
+       x = NULL, y = "Decode speed (tok/s)",
+       fill = "Quantisation", colour = "Quantisation") +
+  theme_hz()
+```
+
+\newpage
+
+## 4. Per-Device Q4 Decode Speedup Over Q8
+
+```{r speedup-chart, fig.height=8, out.height="0.85\\textheight"}
+paired_sorted <- paired %>%
+  arrange(decode_speedup) %>%
+  mutate(Device.name = factor(Device.name, levels = Device.name))
+
+ggplot(paired_sorted, aes(x = decode_speedup, y = Device.name, fill = Device.tier)) +
+  geom_col(alpha = 0.85) +
+  geom_vline(xintercept = 1, linetype = "dotted", colour = "grey40") +
+  scale_fill_manual(values = TIER_COLS) +
+  scale_x_continuous(labels = label_number(suffix = "x")) +
+  labs(title = "Q4 Decode Speedup over Q8 (per device)",
+       subtitle = "Values > 1x mean Q4 is faster. Sorted ascending.",
+       x = "Q4 / Q8 decode ratio", y = NULL, fill = "Tier") +
+  theme_hz(base = 8) +
+  theme(axis.text.y = element_text(size = 7))
+```
+
+\newpage
+
+## 5. Memory Savings --- Q4 vs Q8
+
+```{r memory-saving-chart, fig.height=8, out.height="0.85\\textheight"}
+mem_sorted <- paired %>%
+  arrange(memory_saving) %>%
+  mutate(Device.name = factor(Device.name, levels = Device.name))
+
+ggplot(mem_sorted, aes(x = memory_saving, y = Device.name, fill = Device.tier)) +
+  geom_col(alpha = 0.85) +
+  scale_fill_manual(values = TIER_COLS) +
+  scale_x_continuous(labels = label_number(suffix = " MB")) +
+  labs(title = "Peak Memory Saved by Using Q4 Instead of Q8",
+       subtitle = "Average saving: 621 MB (34%). No device saves less than 56 MB.",
+       x = "Memory saved (MB)", y = NULL, fill = "Tier") +
+  theme_hz(base = 8) +
+  theme(axis.text.y = element_text(size = 7))
+```
+
+```{r memory-dist}
+ggplot(df, aes(x = Peak.memory..MB., fill = config)) +
+  geom_histogram(binwidth = 100, alpha = 0.7, position = "identity", colour = "white") +
+  scale_fill_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_x_continuous(labels = label_number(suffix = " MB")) +
+  labs(title = "Peak Memory Distribution",
+       subtitle = "Q4 cluster: ~960-1,500 MB. Q8 cluster: ~1,600-2,450 MB.",
+       x = "Peak memory (MB)", y = "Count", fill = "Quantisation") +
+  theme_hz()
+```
+
+\newpage
+
+## 6. Processor Family Comparison
+
+```{r proc-family, fig.height=4}
+proc_summary <- paired %>%
+  group_by(proc_family) %>%
+  summarise(decode_q4 = mean(d4), decode_q8 = mean(d8), n = n(), .groups = "drop") %>%
+  arrange(decode_q4)
+
+proc_long <- proc_summary %>%
+  pivot_longer(c(decode_q4, decode_q8), names_to = "config", values_to = "decode") %>%
+  mutate(
+    config = recode(config, decode_q4 = "Int4-Q4", decode_q8 = "Int8-Q8"),
+    proc_family = factor(proc_family, levels = proc_summary$proc_family)
+  )
+
+ggplot(proc_long, aes(x = decode, y = proc_family, fill = config)) +
+  geom_col(position = "dodge", alpha = 0.88, width = 0.65) +
+  geom_text(aes(label = round(decode, 1)),
+            position = position_dodge(0.65), hjust = -0.1, size = 2.6) +
+  scale_fill_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_x_continuous(limits = c(0, 75), labels = label_number(suffix = " tok/s")) +
+  labs(title = "Average Decode Speed by Processor Family",
+       subtitle = "Snapdragon 8 Gen 2/3 dominates. Tensor G3/G4 lead ARM competitors.",
+       x = "Decode speed (tok/s)", y = NULL, fill = "Quantisation") +
+  theme_hz()
+```
+
+\newpage
+
+## 7. Year-over-Year Progression
+
+```{r yoy}
+yoy <- df %>%
+  group_by(Year.released, config) %>%
+  summarise(decode = mean(Decode.tokens.sec..Avg.), mem = mean(Peak.memory..MB.),
+            n = n(), .groups = "drop")
+
+ggplot(yoy, aes(x = Year.released, y = decode, colour = config, group = config)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(aes(size = n), alpha = 0.85) +
+  scale_colour_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_x_continuous(breaks = 2020:2025) +
+  scale_y_continuous(labels = label_number(suffix = " tok/s")) +
+  scale_size_continuous(range = c(3, 7), name = "Devices tested") +
+  labs(title = "Average Decode Speed by Release Year",
+       subtitle = "Q4 decode grew ~3.8x from 2020 to 2024 hardware",
+       x = "Device release year", y = "Avg decode (tok/s)", colour = "Quantisation") +
+  theme_hz()
+```
+
+```{r yoy-mem}
+ggplot(yoy %>% filter(config == "Int4-Q4"), aes(x = Year.released, y = mem)) +
+  geom_col(fill = Q4_COL, alpha = 0.8, width = 0.6) +
+  geom_text(aes(label = paste0(round(mem), " MB")), vjust = -0.4, size = 3.2) +
+  scale_x_continuous(breaks = 2020:2025) +
+  scale_y_continuous(labels = label_number(suffix = " MB"), limits = c(0, 1900)) +
+  labs(title = "Q4 Average Peak Memory by Release Year",
+       subtitle = "Memory stable or declining since 2023 - efficiency improving",
+       x = "Device release year", y = "Avg peak memory (MB)") +
+  theme_hz()
+```
+
+\newpage
+
+## 8. Time to First Token vs Decode Speed
+
+```{r scatter}
+ggplot(paired, aes(x = ttft4 / 1000, y = d4, colour = Device.tier,
+                   shape = proc_family, size = m4)) +
+  geom_point(alpha = 0.75) +
+  scale_colour_manual(values = TIER_COLS) +
+  scale_x_continuous(labels = label_number(suffix = "s")) +
+  scale_y_continuous(labels = label_number(suffix = " tok/s")) +
+  scale_size_continuous(range = c(2, 6), name = "Peak mem (MB)") +
+  scale_shape_manual(values = c(16, 17, 15, 3, 4, 8, 18, 7, 10, 12, 5)) +
+  labs(title = "TTFT vs Decode Speed (Q4)",
+       subtitle = "Ideal: bottom-left (fast TTFT) + top (fast decode). Shape = processor.",
+       x = "Time to first token (s)", y = "Decode speed (tok/s)",
+       colour = "Tier", shape = "Processor") +
+  theme_hz() +
+  theme(legend.box = "vertical", legend.text = element_text(size = 7))
+```
+
+\newpage
+
+## 9. Top 10 Devices --- Q4 Decode
+
+```{r top10-table}
+q4 %>%
+  arrange(desc(Decode.tokens.sec..Avg.)) %>%
+  head(10) %>%
+  select(Device = Device.name, Tier = Device.tier, Year = Year.released,
+         Processor,
+         `Decode` = Decode.tokens.sec..Avg.,
+         `TTFT (ms)` = Time.to.First.Token..ms.,
+         `Mem (MB)` = Peak.memory..MB.) %>%
+  mutate(across(where(is.numeric), ~ round(., 0)),
+         Device = gsub("Samsung Galaxy ", "Samsung ", Device),
+         Processor = gsub("Qualcomm ", "", Processor),
+         Processor = gsub(" for Galaxy", "", Processor)) %>%
+  kable(booktabs = TRUE, linesep = "")
+```
+
+## 10. Worst 10 Devices --- Q4 Decode
+
+```{r bottom10-table}
+q4 %>%
+  arrange(Decode.tokens.sec..Avg.) %>%
+  head(10) %>%
+  select(Device = Device.name, Tier = Device.tier, Year = Year.released,
+         Processor,
+         `Decode` = Decode.tokens.sec..Avg.,
+         `TTFT (ms)` = Time.to.First.Token..ms.,
+         `Mem (MB)` = Peak.memory..MB.) %>%
+  mutate(across(where(is.numeric), ~ round(., 0)),
+         Processor = gsub("Qualcomm ", "", Processor)) %>%
+  kable(booktabs = TRUE, linesep = "")
+```
+
+\newpage
+
+## 11. Initialization Time
+
+```{r init-scatter}
+init_df <- bind_rows(
+  paired %>% select(Device.name, Device.tier, value = init4) %>% mutate(config = "Int4-Q4"),
+  paired %>% select(Device.name, Device.tier, value = init8) %>% mutate(config = "Int8-Q8")
+)
+
+ggplot(init_df, aes(x = Device.tier, y = value / 1000, fill = config)) +
+  geom_boxplot(alpha = 0.45, outlier.shape = 21, outlier.size = 1.5,
+               position = position_dodge(0.8), width = 0.6) +
+  scale_fill_manual(values = c("Int4-Q4" = Q4_COL, "Int8-Q8" = Q8_COL)) +
+  scale_y_continuous(labels = label_number(suffix = "s")) +
+  labs(title = "First Initialization Time by Tier",
+       subtitle = "Q4 loads 40% faster on average. Outliers are legacy low-end chips.",
+       x = NULL, y = "First init time (seconds)", fill = "Quantisation") +
+  theme_hz()
+```
+
+\newpage
+
+## Summary
+
+```{r summary-table}
+tribble(
+  ~Finding,                          ~Detail,
+  "Q4 decode is 1.62x faster",       "Consistent across all tiers and processor families",
+  "Q4 saves 34% memory",             "~621 MB saved on average; critical for 4 GB RAM devices",
+  "Q4 loads 40% faster",             "3.5s vs 5.9s cold start",
+  "Q8 wins on TTFT & prefill",       "12% faster first token; 18% faster prompt processing",
+  "No Q8 device breaks 40 tok/s",    "Q4 hits 40+ on 25% of tested devices",
+  "Snapdragon 8 Gen 2/3 leads",      "59.5 tok/s Q4 avg - 52% faster than next group",
+  "Tensor G3/G4 is competitive",     "~39 tok/s Q4, strong for a non-Qualcomm chip",
+  "Legacy devices are marginal",     "SD 662/665/680 and Unisoc below 10 tok/s",
+  "2020 to 2024 = 3.8x speed gain",  "Hardware progression is the biggest decode lever",
+  "Minimum viable: 2022+ mid-range", "Anything older struggles to reach 20 tok/s"
+) %>%
+  kable(booktabs = TRUE, linesep = "")
+```

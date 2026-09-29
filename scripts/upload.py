@@ -28,7 +28,6 @@ import hashlib
 import importlib.util
 import json
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -97,6 +96,7 @@ def collect_files(model_key: str) -> list[Path]:
 
 
 # ── HuggingFace ──────────────────────────────────────────────────────────────
+
 
 def _ensure_repo(api: HfApi, repo_id: str):
     try:
@@ -181,6 +181,7 @@ def upload_to_hf(models_to_upload: list[str], cards: dict, dry_run: bool):
 
 # ── Cloudflare R2 (S3-compatible) ────────────────────────────────────────────
 
+
 def _md5_file(path: Path) -> str:
     h = hashlib.md5()
     with open(path, "rb") as f:
@@ -189,14 +190,20 @@ def _md5_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _upload_r2_file(s3, bucket: str, local_path: Path, s3_key: str, dry_run: bool) -> bool:
+def _upload_r2_file(
+    s3, bucket: str, local_path: Path, s3_key: str, dry_run: bool
+) -> bool:
     size_mb = local_path.stat().st_size / 1e6
-    print(f"    {'[DRY RUN] ' if dry_run else ''}{local_path.name} ({size_mb:.1f} MB) -> {s3_key}")
+    print(
+        f"    {'[DRY RUN] ' if dry_run else ''}{local_path.name} ({size_mb:.1f} MB) -> {s3_key}"
+    )
     if dry_run:
         return True
     try:
         s3.upload_file(
-            str(local_path), bucket, s3_key,
+            str(local_path),
+            bucket,
+            s3_key,
             ExtraArgs={
                 "ContentType": "application/octet-stream",
                 "Metadata": {
@@ -211,7 +218,9 @@ def _upload_r2_file(s3, bucket: str, local_path: Path, s3_key: str, dry_run: boo
         return False
 
 
-def _write_manifest(s3, bucket: str, prefix: str, version: str, models_uploaded: dict, dry_run: bool):
+def _write_manifest(
+    s3, bucket: str, prefix: str, version: str, models_uploaded: dict, dry_run: bool
+):
     manifest = {
         "version": version,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
@@ -219,14 +228,28 @@ def _write_manifest(s3, bucket: str, prefix: str, version: str, models_uploaded:
     }
     manifest_json = json.dumps(manifest, indent=2)
 
-    for key in [f"{prefix}/manifests/v{version}.json", f"{prefix}/manifests/latest.json"]:
+    for key in [
+        f"{prefix}/manifests/v{version}.json",
+        f"{prefix}/manifests/latest.json",
+    ]:
         print(f"    {'[DRY RUN] ' if dry_run else ''}manifest -> s3://{bucket}/{key}")
         if not dry_run:
-            s3.put_object(Bucket=bucket, Key=key, Body=manifest_json.encode(), ContentType="application/json")
+            s3.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=manifest_json.encode(),
+                ContentType="application/json",
+            )
 
 
-def upload_to_r2(models_to_upload: list[str], version: str, dry_run: bool,
-                 bucket: str = None, prefix: str = None, endpoint_url: str = None):
+def upload_to_r2(
+    models_to_upload: list[str],
+    version: str,
+    dry_run: bool,
+    bucket: str = None,
+    prefix: str = None,
+    endpoint_url: str = None,
+):
     print("\n" + "=" * 60)
     print("CLOUDFLARE R2")
     print("=" * 60)
@@ -296,6 +319,7 @@ def upload_to_r2(models_to_upload: list[str], version: str, dry_run: bool,
 
 # ── Model cards ──────────────────────────────────────────────────────────────
 
+
 def _load_cards() -> dict:
     """Load model cards from upload_to_hf.py (keeps cards in one place)."""
     hf_path = Path(__file__).parent / "upload_to_hf.py"
@@ -315,20 +339,42 @@ def _load_cards() -> dict:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Upload Horizon models to HuggingFace and Cloudflare R2"
     )
     parser.add_argument(
-        "--what", nargs="+", required=True,
-        choices=["full", "gguf", "mobile", "edge-2b", "edge-4b", "edge-2b-web", "edge-4b-web", "all"],
+        "--what",
+        nargs="+",
+        required=True,
+        choices=[
+            "full",
+            "gguf",
+            "mobile",
+            "edge-2b",
+            "edge-4b",
+            "edge-2b-web",
+            "edge-4b-web",
+            "all",
+        ],
     )
-    parser.add_argument("--version", required=True, help="Semantic version (e.g. 2.1.0)")
-    parser.add_argument("--skip-hf", action="store_true", help="Skip HuggingFace upload")
-    parser.add_argument("--skip-r2", action="store_true", help="Skip Cloudflare R2 upload")
-    parser.add_argument("--dry-run", action="store_true", help="Preview without uploading")
+    parser.add_argument(
+        "--version", required=True, help="Semantic version (e.g. 2.1.0)"
+    )
+    parser.add_argument(
+        "--skip-hf", action="store_true", help="Skip HuggingFace upload"
+    )
+    parser.add_argument(
+        "--skip-r2", action="store_true", help="Skip Cloudflare R2 upload"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview without uploading"
+    )
     parser.add_argument("--bucket", default=None, help="Override S3_BUCKET env")
-    parser.add_argument("--endpoint-url", default=None, help="Override S3_ENDPOINT_URL env")
+    parser.add_argument(
+        "--endpoint-url", default=None, help="Override S3_ENDPOINT_URL env"
+    )
     parser.add_argument("--prefix", default=None, help="Override S3_PREFIX env")
     args = parser.parse_args()
 
@@ -346,8 +392,12 @@ def main():
 
     if not args.skip_r2:
         upload_to_r2(
-            models, args.version, args.dry_run,
-            bucket=args.bucket, prefix=args.prefix, endpoint_url=args.endpoint_url,
+            models,
+            args.version,
+            args.dry_run,
+            bucket=args.bucket,
+            prefix=args.prefix,
+            endpoint_url=args.endpoint_url,
         )
 
     print("\n" + "=" * 60)

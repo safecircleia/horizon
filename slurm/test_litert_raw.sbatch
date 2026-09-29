@@ -19,6 +19,9 @@ OUTDIR="/slurm/home/$USER/output"
 SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
 cd "$SUBMIT_DIR"
 
+# uv/uvx live in ~/.local/bin on ANTS, not on the default PATH
+export PATH="$HOME/.local/bin:$PATH"
+
 VENV="$SUBMIT_DIR/.venv"
 source "$VENV/bin/activate"
 export PYTHONUNBUFFERED=1

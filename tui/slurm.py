@@ -19,21 +19,26 @@ def squeue(user: str = None) -> list[Job]:
     cmd = ["squeue", "--format=%i|%j|%T|%M|%P|%N", "--noheader"]
     if user:
         cmd += ["-u", user]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return []
     if result.returncode != 0:
         return []
     jobs = []
     for line in result.stdout.strip().splitlines():
         parts = line.strip().split("|")
         if len(parts) >= 6:
-            jobs.append(Job(
-                job_id=parts[0].strip(),
-                name=parts[1].strip(),
-                state=parts[2].strip(),
-                time=parts[3].strip(),
-                partition=parts[4].strip(),
-                node=parts[5].strip(),
-            ))
+            jobs.append(
+                Job(
+                    job_id=parts[0].strip(),
+                    name=parts[1].strip(),
+                    state=parts[2].strip(),
+                    time=parts[3].strip(),
+                    partition=parts[4].strip(),
+                    node=parts[5].strip(),
+                )
+            )
     return jobs
 
 
@@ -44,7 +49,10 @@ def sbatch(script: str, export_vars: dict = None) -> tuple[bool, str]:
         export_str = ",".join(f"{k}={v}" for k, v in export_vars.items())
         cmd += [f"--export=ALL,{export_str}"]
     cmd.append(script)
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return False, "sbatch not found — SLURM is not installed locally"
     if result.returncode == 0:
         # "Submitted batch job 1234"
         job_id = result.stdout.strip().split()[-1]
@@ -53,7 +61,10 @@ def sbatch(script: str, export_vars: dict = None) -> tuple[bool, str]:
 
 
 def scancel(job_id: str) -> tuple[bool, str]:
-    result = subprocess.run(["scancel", job_id], capture_output=True, text=True)
+    try:
+        result = subprocess.run(["scancel", job_id], capture_output=True, text=True)
+    except FileNotFoundError:
+        return False, "scancel not found — SLURM is not installed locally"
     if result.returncode == 0:
         return True, f"Cancelled job {job_id}"
     return False, result.stderr.strip()
@@ -62,9 +73,12 @@ def scancel(job_id: str) -> tuple[bool, str]:
 def tail_log(job_id: str, lines: int = 50) -> str:
     """Read the last N lines of a job's stdout log."""
     import os
+
     user = os.environ.get("USER", "")
     log_path = f"/slurm/home/{user}/output/{job_id}/terminal.out"
-    result = subprocess.run(["tail", f"-n{lines}", log_path], capture_output=True, text=True)
+    result = subprocess.run(
+        ["tail", f"-n{lines}", log_path], capture_output=True, text=True
+    )
     if result.returncode == 0:
         return result.stdout
     return f"(cannot read log: {log_path})"
@@ -73,9 +87,12 @@ def tail_log(job_id: str, lines: int = 50) -> str:
 def tail_err_log(job_id: str, lines: int = 50) -> str:
     """Read the last N lines of a job's stderr log."""
     import os
+
     user = os.environ.get("USER", "")
     log_path = f"/slurm/home/{user}/output/{job_id}/terminal.err"
-    result = subprocess.run(["tail", f"-n{lines}", log_path], capture_output=True, text=True)
+    result = subprocess.run(
+        ["tail", f"-n{lines}", log_path], capture_output=True, text=True
+    )
     if result.returncode == 0:
         return result.stdout or "(stderr is empty)"
     return f"(cannot read log: {log_path})"
@@ -102,7 +119,10 @@ def sacct_recent(count: int = 10) -> list[RecentJob]:
         "--endtime=now",
         "--state=COMPLETED,FAILED,TIMEOUT,CANCELLED,OUT_OF_MEMORY",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return []
     if result.returncode != 0:
         return []
     jobs = []
@@ -114,14 +134,16 @@ def sacct_recent(count: int = 10) -> list[RecentJob]:
         # Skip sub-steps (e.g. "1234.batch", "1234.extern")
         if "." in job_id:
             continue
-        jobs.append(RecentJob(
-            job_id=job_id,
-            name=parts[1].strip(),
-            state=parts[2].strip(),
-            exit_code=parts[3].strip(),
-            end_time=parts[4].strip(),
-            elapsed=parts[5].strip(),
-        ))
+        jobs.append(
+            RecentJob(
+                job_id=job_id,
+                name=parts[1].strip(),
+                state=parts[2].strip(),
+                exit_code=parts[3].strip(),
+                end_time=parts[4].strip(),
+                elapsed=parts[5].strip(),
+            )
+        )
     # Most recent first, capped
     return jobs[-count:][::-1]
 
@@ -146,7 +168,10 @@ class NodeInfo:
 def sinfo() -> list[NodeInfo]:
     """Get cluster node info (name, partition, state, CPUs, memory, GPUs)."""
     cmd = ["sinfo", "--format=%n|%P|%T|%c|%m|%G", "--noheader"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError:
+        return []
     if result.returncode != 0:
         return []
     nodes = []
@@ -158,14 +183,16 @@ def sinfo() -> list[NodeInfo]:
             if name in seen:
                 continue
             seen.add(name)
-            nodes.append(NodeInfo(
-                name=name,
-                partition=parts[1].strip().rstrip("*"),
-                state=parts[2].strip(),
-                cpus=parts[3].strip(),
-                memory=parts[4].strip(),
-                gres=parts[5].strip(),
-            ))
+            nodes.append(
+                NodeInfo(
+                    name=name,
+                    partition=parts[1].strip().rstrip("*"),
+                    state=parts[2].strip(),
+                    cpus=parts[3].strip(),
+                    memory=parts[4].strip(),
+                    gres=parts[5].strip(),
+                )
+            )
     return nodes
 
 

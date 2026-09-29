@@ -15,20 +15,18 @@ Usage:
 """
 
 import argparse
-import json
 import sys
-from pathlib import Path
-from typing import Dict, List, Any, Tuple, Optional
 from collections import Counter, defaultdict
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 import jsonlines
+
+from data.generation.validators.quality import validate_conversation_quality
 from data.generation.validators.schemas import (
     SyntheticConversation,
-    RiskCategory,
-    RiskLevel
 )
-from data.generation.validators.quality import validate_conversation_quality
 
 
 class DatasetStats:
@@ -41,8 +39,8 @@ class DatasetStats:
             data_dir: Directory containing JSONL files
         """
         self.data_dir = Path(data_dir)
-        self.conversations: List[SyntheticConversation] = []
-        self.errors: List[Dict[str, Any]] = []
+        self.conversations: list[SyntheticConversation] = []
+        self.errors: list[dict[str, Any]] = []
 
     def load_conversations(self) -> bool:
         """Load all conversations from JSONL files.
@@ -69,18 +67,18 @@ class DatasetStats:
                             self.conversations.append(conv)
                             total_loaded += 1
                         except Exception as e:
-                            self.errors.append({
-                                'file': str(jsonl_file),
-                                'line': line_num,
-                                'error': str(e),
-                                'type': 'validation'
-                            })
+                            self.errors.append(
+                                {
+                                    "file": str(jsonl_file),
+                                    "line": line_num,
+                                    "error": str(e),
+                                    "type": "validation",
+                                }
+                            )
             except Exception as e:
-                self.errors.append({
-                    'file': str(jsonl_file),
-                    'error': str(e),
-                    'type': 'read'
-                })
+                self.errors.append(
+                    {"file": str(jsonl_file), "error": str(e), "type": "read"}
+                )
 
         print(f"Loaded {total_loaded} conversations from {len(jsonl_files)} files")
         if self.errors:
@@ -88,7 +86,7 @@ class DatasetStats:
 
         return len(self.conversations) > 0
 
-    def get_basic_stats(self) -> Dict[str, Any]:
+    def get_basic_stats(self) -> dict[str, Any]:
         """Calculate basic dataset statistics.
 
         Returns:
@@ -107,8 +105,7 @@ class DatasetStats:
 
         # Generator distribution
         generator_counts = Counter(
-            c.metadata.get('generator', 'unknown')
-            for c in self.conversations
+            c.metadata.get("generator", "unknown") for c in self.conversations
         )
 
         # Message statistics
@@ -119,8 +116,7 @@ class DatasetStats:
 
         # Content length statistics (total characters)
         content_lengths = [
-            sum(len(msg.content) for msg in c.messages)
-            for c in self.conversations
+            sum(len(msg.content) for msg in c.messages) for c in self.conversations
         ]
         avg_content_length = sum(content_lengths) / total if content_lengths else 0
 
@@ -135,75 +131,81 @@ class DatasetStats:
         vocabulary_size = len(unique_tokens)
 
         return {
-            'total_conversations': total,
-            'total_messages': sum(message_counts),
-            'categories': dict(category_counts),
-            'risk_levels': dict(risk_counts),
-            'generators': dict(generator_counts),
-            'message_stats': {
-                'average': round(avg_messages, 2),
-                'min': min_messages,
-                'max': max_messages,
+            "total_conversations": total,
+            "total_messages": sum(message_counts),
+            "categories": dict(category_counts),
+            "risk_levels": dict(risk_counts),
+            "generators": dict(generator_counts),
+            "message_stats": {
+                "average": round(avg_messages, 2),
+                "min": min_messages,
+                "max": max_messages,
             },
-            'content_stats': {
-                'average_length': round(avg_content_length, 2),
-                'min_length': min(content_lengths) if content_lengths else 0,
-                'max_length': max(content_lengths) if content_lengths else 0,
+            "content_stats": {
+                "average_length": round(avg_content_length, 2),
+                "min_length": min(content_lengths) if content_lengths else 0,
+                "max_length": max(content_lengths) if content_lengths else 0,
             },
-            'vocabulary': {
-                'unique_tokens': vocabulary_size,
-                'total_tokens': len(all_tokens),
-            }
+            "vocabulary": {
+                "unique_tokens": vocabulary_size,
+                "total_tokens": len(all_tokens),
+            },
         }
 
-    def get_category_breakdown(self) -> Dict[str, Dict[str, Any]]:
+    def get_category_breakdown(self) -> dict[str, dict[str, Any]]:
         """Get detailed breakdown by category.
 
         Returns:
             Dictionary with per-category statistics
         """
-        breakdown = defaultdict(lambda: {
-            'total': 0,
-            'risk_levels': Counter(),
-            'avg_messages': 0,
-            'avg_content_length': 0,
-            'generators': Counter()
-        })
+        breakdown = defaultdict(
+            lambda: {
+                "total": 0,
+                "risk_levels": Counter(),
+                "avg_messages": 0,
+                "avg_content_length": 0,
+                "generators": Counter(),
+            }
+        )
 
         for conv in self.conversations:
             cat = conv.category.value
-            breakdown[cat]['total'] += 1
-            breakdown[cat]['risk_levels'][conv.label.risk_level.value] += 1
-            breakdown[cat]['avg_messages'] += len(conv.messages)
+            breakdown[cat]["total"] += 1
+            breakdown[cat]["risk_levels"][conv.label.risk_level.value] += 1
+            breakdown[cat]["avg_messages"] += len(conv.messages)
 
             content_len = sum(len(msg.content) for msg in conv.messages)
-            breakdown[cat]['avg_content_length'] += content_len
+            breakdown[cat]["avg_content_length"] += content_len
 
-            gen = conv.metadata.get('generator', 'unknown')
-            breakdown[cat]['generators'][gen] += 1
+            gen = conv.metadata.get("generator", "unknown")
+            breakdown[cat]["generators"][gen] += 1
 
         # Convert counters and calculate averages
         result = {}
         for cat, stats in breakdown.items():
-            total = stats['total']
+            total = stats["total"]
             result[cat] = {
-                'total': total,
-                'risk_levels': dict(stats['risk_levels']),
-                'avg_messages': round(stats['avg_messages'] / total, 2) if total > 0 else 0,
-                'avg_content_length': round(stats['avg_content_length'] / total, 2) if total > 0 else 0,
-                'generators': dict(stats['generators']),
+                "total": total,
+                "risk_levels": dict(stats["risk_levels"]),
+                "avg_messages": (
+                    round(stats["avg_messages"] / total, 2) if total > 0 else 0
+                ),
+                "avg_content_length": (
+                    round(stats["avg_content_length"] / total, 2) if total > 0 else 0
+                ),
+                "generators": dict(stats["generators"]),
             }
 
         return result
 
-    def validate_dataset(self) -> Dict[str, Any]:
+    def validate_dataset(self) -> dict[str, Any]:
         """Run quality validation checks on dataset.
 
         Returns:
             Dictionary with validation results
         """
         if not self.conversations:
-            return {'valid': False, 'total_checked': 0, 'issues': []}
+            return {"valid": False, "total_checked": 0, "issues": []}
 
         valid_count = 0
         invalid_conversations = []
@@ -214,28 +216,30 @@ class DatasetStats:
                 min_length=4,
                 max_length=30,
                 min_unique_tokens=20,
-                allow_consecutive_roles=True
+                allow_consecutive_roles=True,
             )
 
             if is_valid:
                 valid_count += 1
             else:
-                invalid_conversations.append({
-                    'conversation_id': conv.conversation_id,
-                    'category': conv.category.value,
-                    'errors': errors
-                })
+                invalid_conversations.append(
+                    {
+                        "conversation_id": conv.conversation_id,
+                        "category": conv.category.value,
+                        "errors": errors,
+                    }
+                )
 
         total = len(self.conversations)
         validity_rate = (valid_count / total * 100) if total > 0 else 0
 
         return {
-            'total_checked': total,
-            'valid_conversations': valid_count,
-            'invalid_conversations': len(invalid_conversations),
-            'validity_rate_percent': round(validity_rate, 2),
-            'passing': validity_rate >= 95.0,
-            'issues': invalid_conversations[:10]  # Report first 10 issues
+            "total_checked": total,
+            "valid_conversations": valid_count,
+            "invalid_conversations": len(invalid_conversations),
+            "validity_rate_percent": round(validity_rate, 2),
+            "passing": validity_rate >= 95.0,
+            "issues": invalid_conversations[:10],  # Report first 10 issues
         }
 
     def print_header(self, title: str) -> None:
@@ -268,50 +272,54 @@ class DatasetStats:
 
         # Category distribution
         print("Category Distribution:")
-        total = stats['total_conversations']
-        for cat in sorted(stats['categories'].keys()):
-            count = stats['categories'][cat]
+        total = stats["total_conversations"]
+        for cat in sorted(stats["categories"].keys()):
+            count = stats["categories"][cat]
             percentage = (count / total * 100) if total > 0 else 0
             print(f"  {cat:20s}: {count:6d} ({percentage:5.1f}%)")
         print()
 
         # Risk level distribution
         print("Risk Level Distribution:")
-        for level in sorted(stats['risk_levels'].keys()):
-            count = stats['risk_levels'][level]
+        for level in sorted(stats["risk_levels"].keys()):
+            count = stats["risk_levels"][level]
             percentage = (count / total * 100) if total > 0 else 0
             print(f"  {level:20s}: {count:6d} ({percentage:5.1f}%)")
         print()
 
         # Generator distribution
         print("Generator Distribution:")
-        for gen in sorted(stats['generators'].keys()):
-            count = stats['generators'][gen]
+        for gen in sorted(stats["generators"].keys()):
+            count = stats["generators"][gen]
             percentage = (count / total * 100) if total > 0 else 0
             print(f"  {gen:20s}: {count:6d} ({percentage:5.1f}%)")
         print()
 
         # Message statistics
         print("Message Statistics:")
-        msg_stats = stats['message_stats']
+        msg_stats = stats["message_stats"]
         print(f"  Average per conversation: {msg_stats['average']}")
         print(f"  Range: {msg_stats['min']} to {msg_stats['max']}")
         print()
 
         # Content statistics
         print("Content Statistics (characters):")
-        content_stats = stats['content_stats']
+        content_stats = stats["content_stats"]
         print(f"  Average per conversation: {content_stats['average_length']}")
-        print(f"  Range: {content_stats['min_length']} to {content_stats['max_length']}")
+        print(
+            f"  Range: {content_stats['min_length']} to {content_stats['max_length']}"
+        )
         print()
 
         # Vocabulary statistics
         print("Vocabulary Statistics:")
-        vocab_stats = stats['vocabulary']
+        vocab_stats = stats["vocabulary"]
         print(f"  Unique tokens: {vocab_stats['unique_tokens']}")
         print(f"  Total tokens: {vocab_stats['total_tokens']}")
-        if vocab_stats['total_tokens'] > 0:
-            uniqueness = (vocab_stats['unique_tokens'] / vocab_stats['total_tokens'] * 100)
+        if vocab_stats["total_tokens"] > 0:
+            uniqueness = (
+                vocab_stats["unique_tokens"] / vocab_stats["total_tokens"] * 100
+            )
             print(f"  Uniqueness ratio: {uniqueness:.1f}%")
 
     def print_category_breakdown(self) -> None:
@@ -328,14 +336,14 @@ class DatasetStats:
             print()
 
             print("  Risk Levels:")
-            for level in sorted(stats['risk_levels'].keys()):
-                count = stats['risk_levels'][level]
+            for level in sorted(stats["risk_levels"].keys()):
+                count = stats["risk_levels"][level]
                 print(f"    {level:15s}: {count}")
 
             print()
             print("  Generators:")
-            for gen in sorted(stats['generators'].keys()):
-                count = stats['generators'][gen]
+            for gen in sorted(stats["generators"].keys()):
+                count = stats["generators"][gen]
                 print(f"    {gen:15s}: {count}")
 
             print()
@@ -356,20 +364,20 @@ class DatasetStats:
         print(f"Validity Rate: {validation['validity_rate_percent']:.1f}%")
         print()
 
-        if validation['passing']:
+        if validation["passing"]:
             print("Status: PASSED - Dataset meets quality requirements (>= 95%)")
         else:
             print("Status: FAILED - Dataset quality below requirement (< 95%)")
 
-        if validation['issues']:
+        if validation["issues"]:
             print()
             print("Sample Issues (first 10):")
-            for i, issue in enumerate(validation['issues'], 1):
+            for i, issue in enumerate(validation["issues"], 1):
                 print(f"  {i}. Conv ID: {issue['conversation_id']}")
                 print(f"     Category: {issue['category']}")
-                for error in issue['errors'][:2]:  # Show first 2 errors
+                for error in issue["errors"][:2]:  # Show first 2 errors
                     print(f"     - {error}")
-                if len(issue['errors']) > 2:
+                if len(issue["errors"]) > 2:
                     print(f"     ... and {len(issue['errors']) - 2} more errors")
 
     def print_summary(self) -> None:
@@ -392,13 +400,13 @@ class DatasetStats:
         print()
 
         # Quality status
-        status = "PASSED" if validation['passing'] else "FAILED"
-        validity = validation['validity_rate_percent']
+        status = "PASSED" if validation["passing"] else "FAILED"
+        validity = validation["validity_rate_percent"]
         print(f"Quality Status: {status} ({validity:.1f}% valid)")
         print()
 
         # Coverage
-        categories = stats['categories']
+        categories = stats["categories"]
         print("Category Coverage:")
         for cat in sorted(categories.keys()):
             count = categories[cat]
@@ -427,20 +435,18 @@ Examples:
 
   # Combined analysis and validation
   python stats.py --input data/raw/ --validate
-        """
+        """,
     )
 
     parser.add_argument(
-        '--input',
+        "--input",
         type=str,
-        default='data/raw/',
-        help='Input directory containing JSONL files (default: data/raw/)'
+        default="data/raw/",
+        help="Input directory containing JSONL files (default: data/raw/)",
     )
 
     parser.add_argument(
-        '--validate',
-        action='store_true',
-        help='Run full dataset validation checks'
+        "--validate", action="store_true", help="Run full dataset validation checks"
     )
 
     args = parser.parse_args()
@@ -471,5 +477,5 @@ Examples:
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

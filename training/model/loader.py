@@ -1,9 +1,8 @@
 """Model and tokenizer loading for QLoRA training."""
 
-from typing import Tuple, Optional
 import torch
+from peft import LoraConfig, PeftModel, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import LoraConfig, get_peft_model, PeftModel
 
 TORCH_DTYPE_MAP = {
     "bfloat16": torch.bfloat16,
@@ -27,7 +26,9 @@ def _configure_attention(attn_impl: str) -> str:
     return attn_impl
 
 
-def load_model_and_tokenizer(config: dict) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+def load_model_and_tokenizer(
+    config: dict,
+) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
     """Load base model and tokenizer, applying QLoRA and attention config."""
     model_cfg = config["model"]
     lora_cfg = config["lora"]
@@ -44,8 +45,8 @@ def load_model_and_tokenizer(config: dict) -> Tuple[AutoModelForCausalLM, AutoTo
     use_4bit = quant_cfg.get("load_in_4bit", True)
 
     if use_4bit:
-        from transformers import BitsAndBytesConfig
         from peft import prepare_model_for_kbit_training
+        from transformers import BitsAndBytesConfig
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -94,8 +95,8 @@ def load_model_and_tokenizer(config: dict) -> Tuple[AutoModelForCausalLM, AutoTo
 
 def load_for_inference(
     checkpoint_path: str,
-    base_model: Optional[str] = None,
-) -> Tuple[PeftModel, AutoTokenizer]:
+    base_model: str | None = None,
+) -> tuple[PeftModel, AutoTokenizer]:
     """Load a trained LoRA checkpoint for inference."""
     from peft import PeftConfig
 

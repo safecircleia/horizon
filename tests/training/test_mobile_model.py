@@ -1,8 +1,8 @@
 # tests/training/test_mobile_model.py
 from training.model.mobile import (
+    MOBILE_BASE_MODEL,
     RISK_CATEGORIES,
     RISK_LEVELS,
-    MOBILE_BASE_MODEL,
     SYSTEM_PROMPT,
 )
 
@@ -11,8 +11,14 @@ def test_risk_categories_complete():
     assert len(RISK_CATEGORIES) == 8
     assert "benign" in RISK_CATEGORIES
     expected = {
-        "grooming", "bullying", "sexual_content", "isolation",
-        "personal_info", "platform_migration", "threats", "benign",
+        "grooming",
+        "bullying",
+        "sexual_content",
+        "isolation",
+        "personal_info",
+        "platform_migration",
+        "threats",
+        "benign",
     }
     assert set(RISK_CATEGORIES) == expected
 

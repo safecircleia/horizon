@@ -3,6 +3,7 @@
 import random
 from dataclasses import dataclass
 from typing import Any, Literal
+
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
 Language = Literal["en", "es"]
@@ -11,6 +12,7 @@ Language = Literal["en", "es"]
 @dataclass
 class ConversationPrompt:
     """Prompt for conversation generation, passed to a generator."""
+
     category: RiskCategory
     severity: RiskLevel
     system_prompt: str
@@ -35,28 +37,68 @@ def format_system_prompt(language: Language = "en") -> str:
 
 # ── English persona pools ─────────────────────────────────────────────────────
 _EN_NAMES = [
-    "Alex", "Jordan", "Tyler", "Morgan", "Casey", "Sam", "Riley", "Jamie",
-    "Taylor", "Avery", "Blake", "Drew", "Quinn", "Skyler", "Reese", "Harper",
-    "Peyton", "Logan", "Hayden", "Mackenzie",
+    "Alex",
+    "Jordan",
+    "Tyler",
+    "Morgan",
+    "Casey",
+    "Sam",
+    "Riley",
+    "Jamie",
+    "Taylor",
+    "Avery",
+    "Blake",
+    "Drew",
+    "Quinn",
+    "Skyler",
+    "Reese",
+    "Harper",
+    "Peyton",
+    "Logan",
+    "Hayden",
+    "Mackenzie",
 ]
 _EN_PLATFORMS = ["Discord", "Instagram", "Snapchat", "WhatsApp", "TikTok"]
 _EN_RELATIONSHIPS = [
-    "a classmate", "a stranger from a gaming server", "an online friend",
-    "someone from a fan community", "a friend of a friend",
+    "a classmate",
+    "a stranger from a gaming server",
+    "an online friend",
+    "someone from a fan community",
+    "a friend of a friend",
 ]
 
 # ── Spanish persona pools ─────────────────────────────────────────────────────
 _ES_NAMES = [
-    "Carlos", "Miguel", "Lucía", "Sofía", "Pablo", "Alejandro", "María",
-    "Diego", "Valentina", "Andrés", "Daniela", "Sergio", "Elena", "Marcos",
-    "Alba", "Adrián", "Paula", "Javier", "Carla", "Rubén",
+    "Carlos",
+    "Miguel",
+    "Lucía",
+    "Sofía",
+    "Pablo",
+    "Alejandro",
+    "María",
+    "Diego",
+    "Valentina",
+    "Andrés",
+    "Daniela",
+    "Sergio",
+    "Elena",
+    "Marcos",
+    "Alba",
+    "Adrián",
+    "Paula",
+    "Javier",
+    "Carla",
+    "Rubén",
 ]
 # WhatsApp dominates Spain; keep Discord/TikTok/Instagram
 _ES_PLATFORMS = ["WhatsApp", "Instagram", "TikTok", "Discord", "Snapchat", "Telegram"]
 _ES_RELATIONSHIPS = [
-    "un compañero de clase", "un desconocido de un servidor de gaming",
-    "un amigo online", "alguien de una comunidad de fans",
-    "un amigo de un amigo", "alguien del instituto",
+    "un compañero de clase",
+    "un desconocido de un servidor de gaming",
+    "un amigo online",
+    "alguien de una comunidad de fans",
+    "un amigo de un amigo",
+    "alguien del instituto",
 ]
 
 

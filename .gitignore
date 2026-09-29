@@ -122,3 +122,11 @@ site/
 !.gitkeep
 data/.tokenized_cache/
 .remember/
+
+# Local agent/tool state (not project artifacts)
+.codegraph/daemon.pid
+.serena/
+.playwright-mcp/
+.agents/skills/
+.claude/skills/
+brag-output/

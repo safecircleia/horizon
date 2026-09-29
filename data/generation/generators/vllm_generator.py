@@ -15,7 +15,7 @@ Swap to Qwen2.5-7B-Instruct for ~18 000 tok/s at lower quality.
 """
 
 import os
-from typing import Literal, Optional
+from typing import Literal
 
 import httpx
 from pydantic import BaseModel
@@ -53,14 +53,16 @@ class VLLMGenerator(ConversationGenerator):
     def __init__(
         self,
         model: str = _DEFAULT_MODEL,
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         temperature: float = 0.9,
         max_tokens: int = 512,
         timeout: float = 120.0,
         max_connections: int = 200,
     ):
         self.model = model
-        self.base_url = (base_url or os.getenv("VLLM_BASE_URL", _DEFAULT_BASE_URL)).rstrip("/")
+        self.base_url = (
+            base_url or os.getenv("VLLM_BASE_URL", _DEFAULT_BASE_URL)
+        ).rstrip("/")
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
@@ -112,7 +114,9 @@ class VLLMGenerator(ConversationGenerator):
                     error="Response missing 'messages' field",
                 )
 
-            return GenerationResult(success=True, conversation=conversation, raw_response=text)
+            return GenerationResult(
+                success=True, conversation=conversation, raw_response=text
+            )
 
         except httpx.HTTPStatusError as e:
             return GenerationResult(

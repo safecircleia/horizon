@@ -7,12 +7,17 @@ from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
-
 HF_REPO_ID = "safecircleai/horizon-training-data"
 
 RAW_CATEGORIES = [
-    "grooming", "bullying", "sexual_content", "isolation",
-    "personal_info", "platform_migration", "threats", "benign",
+    "grooming",
+    "bullying",
+    "sexual_content",
+    "isolation",
+    "personal_info",
+    "platform_migration",
+    "threats",
+    "benign",
 ]
 
 
@@ -45,7 +50,9 @@ def download_processed(repo_id: str, token: str | None, output_dir: Path) -> Non
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download Horizon dataset from HuggingFace Hub")
+    parser = argparse.ArgumentParser(
+        description="Download Horizon dataset from HuggingFace Hub"
+    )
     parser.add_argument(
         "--split",
         choices=["raw", "processed", "all"],

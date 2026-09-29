@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SLURM job: fine-tune Gemma 3 1B for LiteRT-LM mobile deployment (L40s GPU).
+# SLURM job: fine-tune Gemma 3 1B for LiteRT-LM mobile deployment (L4 GPU).
 # After training completes, run export_litert.py on a workstation to produce
 # the .litertlm file (ai_edge_torch requires Linux x86-64).
 #
@@ -8,13 +8,17 @@
 #   sbatch --export=RESUME_CHECKPOINT=experiments/mobile-xyz/checkpoint-500 slurm/train_mobile.sbatch
 #
 # Run from: /slurm/home/$USER/safecircle/horizon
+#
+# NOTE: Using gpuMin (L4) instead of gpu (L40s) because gpu partition nodes
+#       have an NVIDIA driver/library version mismatch (kernel 610.43 vs
+#       userspace 610.57). The L4 nodes work correctly.
 
 #SBATCH --job-name=horizon-mobile
-#SBATCH --partition=gpu
+#SBATCH --partition=gpuMin
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --gres=gpu:nvidia_l40s
+#SBATCH --gres=gpu:nvidia_l4:1
 #SBATCH --mem=60G
 #SBATCH --time=3-00:00:00
 #SBATCH --output=/slurm/home/%u/output/%j/terminal.out

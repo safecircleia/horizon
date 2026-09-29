@@ -32,6 +32,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 from trl import SFTConfig, SFTTrainer
+
 from training.model.loader import load_model_and_tokenizer
 
 
@@ -54,7 +55,9 @@ def _load_jsonl_dataset(path: str) -> Dataset:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train SafeCircle risk detection model")
+    parser = argparse.ArgumentParser(
+        description="Train SafeCircle risk detection model"
+    )
     parser.add_argument("--config", required=True, help="Path to training config YAML")
     parser.add_argument("--resume", help="Resume from checkpoint path")
     args = parser.parse_args()
@@ -66,8 +69,10 @@ def main():
     data_cfg = config["data"]
     hw = _detect_hardware()
 
-    print(f"Hardware: {'GPU (CUDA)' if hw['has_cuda'] else 'CPU'} | "
-          f"bf16={hw['use_bf16']} | fp16={hw['use_fp16']}")
+    print(
+        f"Hardware: {'GPU (CUDA)' if hw['has_cuda'] else 'CPU'} | "
+        f"bf16={hw['use_bf16']} | fp16={hw['use_fp16']}"
+    )
 
     if not hw["has_cuda"]:
         train_cfg.update({"bf16": False, "fp16": False})
@@ -129,10 +134,15 @@ def main():
         # Compute loss only on assistant turns.
         # assistant_only_loss requires {% generation %} markers (not in Llama-3.2 template);
         # completion_only_loss with the Llama-3.2 assistant header achieves the same effect.
+        # Explicitly pin loss_type="nll" — trl>=1.7 changed the default to "chunked_nll"
+        # which alters training behavior. Remove this pin only if you want chunked NLL.
+        loss_type="nll",
         max_length=max_seq,
         completion_only_loss=True,
         dataset_text_field=None,  # use messages format, not a single text field
-        dataset_kwargs={"cache_dir": data_cfg.get("cache_dir", "data/.tokenized_cache")},
+        dataset_kwargs={
+            "cache_dir": data_cfg.get("cache_dir", "data/.tokenized_cache")
+        },
     )
 
     trainer = SFTTrainer(

@@ -112,22 +112,50 @@ def test_grooming_prompt_has_persona():
 
 
 import pytest
+
 from data.generation.prompts.bullying import create_bullying_prompt
-from data.generation.prompts.threats import create_threats_prompt
 from data.generation.prompts.isolation import create_isolation_prompt
 from data.generation.prompts.personal_info import create_personal_info_prompt
 from data.generation.prompts.platform_migration import create_platform_migration_prompt
 from data.generation.prompts.sexual_content import create_sexual_content_prompt
+from data.generation.prompts.threats import create_threats_prompt
 
 
-@pytest.mark.parametrize("create_fn,category,severity", [
-    (lambda: create_bullying_prompt(RiskLevel.HIGH, 14, 10), RiskCategory.BULLYING, RiskLevel.HIGH),
-    (lambda: create_threats_prompt(RiskLevel.HIGH, 15, 10), RiskCategory.THREATS, RiskLevel.HIGH),
-    (lambda: create_isolation_prompt(RiskLevel.MEDIUM, 14, 10), RiskCategory.ISOLATION, RiskLevel.MEDIUM),
-    (lambda: create_personal_info_prompt(RiskLevel.MEDIUM, 15, 10), RiskCategory.PERSONAL_INFO, RiskLevel.MEDIUM),
-    (lambda: create_platform_migration_prompt(RiskLevel.LOW, 14, 10), RiskCategory.PLATFORM_MIGRATION, RiskLevel.LOW),
-    (lambda: create_sexual_content_prompt(RiskLevel.MEDIUM, 15, 10), RiskCategory.SEXUAL_CONTENT, RiskLevel.MEDIUM),
-])
+@pytest.mark.parametrize(
+    "create_fn,category,severity",
+    [
+        (
+            lambda: create_bullying_prompt(RiskLevel.HIGH, 14, 10),
+            RiskCategory.BULLYING,
+            RiskLevel.HIGH,
+        ),
+        (
+            lambda: create_threats_prompt(RiskLevel.HIGH, 15, 10),
+            RiskCategory.THREATS,
+            RiskLevel.HIGH,
+        ),
+        (
+            lambda: create_isolation_prompt(RiskLevel.MEDIUM, 14, 10),
+            RiskCategory.ISOLATION,
+            RiskLevel.MEDIUM,
+        ),
+        (
+            lambda: create_personal_info_prompt(RiskLevel.MEDIUM, 15, 10),
+            RiskCategory.PERSONAL_INFO,
+            RiskLevel.MEDIUM,
+        ),
+        (
+            lambda: create_platform_migration_prompt(RiskLevel.LOW, 14, 10),
+            RiskCategory.PLATFORM_MIGRATION,
+            RiskLevel.LOW,
+        ),
+        (
+            lambda: create_sexual_content_prompt(RiskLevel.MEDIUM, 15, 10),
+            RiskCategory.SEXUAL_CONTENT,
+            RiskLevel.MEDIUM,
+        ),
+    ],
+)
 def test_category_prompt_metadata(create_fn, category, severity):
     p = create_fn()
     assert p.category == category
@@ -137,10 +165,21 @@ def test_category_prompt_metadata(create_fn, category, severity):
     assert any(pl in p.user_prompt for pl in platforms)  # persona seed present
 
 
-@pytest.mark.parametrize("create_fn,severity_word,severity", [
-    (lambda s: create_bullying_prompt(s, 14, 10), {RiskLevel.LOW: "mild", RiskLevel.HIGH: "severe"}, RiskLevel.LOW),
-    (lambda s: create_threats_prompt(s, 15, 10), {RiskLevel.LOW: "mild", RiskLevel.HIGH: "severe"}, RiskLevel.HIGH),
-])
+@pytest.mark.parametrize(
+    "create_fn,severity_word,severity",
+    [
+        (
+            lambda s: create_bullying_prompt(s, 14, 10),
+            {RiskLevel.LOW: "mild", RiskLevel.HIGH: "severe"},
+            RiskLevel.LOW,
+        ),
+        (
+            lambda s: create_threats_prompt(s, 15, 10),
+            {RiskLevel.LOW: "mild", RiskLevel.HIGH: "severe"},
+            RiskLevel.HIGH,
+        ),
+    ],
+)
 def test_severity_label_in_prompt(create_fn, severity_word, severity):
     p = create_fn(severity)
     assert severity_word[severity] in p.user_prompt.lower()

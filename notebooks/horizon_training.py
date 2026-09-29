@@ -20,8 +20,8 @@ def _(mo):
 @app.cell
 def _():
     import os
-    import sys
     import subprocess
+    import sys
     from pathlib import Path
 
     # Resolve root from this notebook's location (notebooks/ sits one level below project root)

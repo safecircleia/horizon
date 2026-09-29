@@ -1,4 +1,6 @@
-.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval
+.PHONY: help install install-dev clean test format lint generate-data generate-all validate-data stats clean-data generate-test train evaluate quantize serve upload-data download-data slurm-generate slurm-train-h100 slurm-train-l4 slurm-train-mobile slurm-eval evaluate-mobile benchmark-mobile profile-mobile profile-mobile-check slurm-benchmark-mobile slurm-evaluate-mobile
+
+comma := ,
 
 # Default target
 help:
@@ -27,6 +29,9 @@ help:
 	@echo ""
 	@echo "Evaluation:"
 	@echo "  make evaluate CHECKPOINT=<path>  Evaluate model checkpoint"
+	@echo "  make evaluate-mobile MODEL=<path>  Evaluate mobile LiteRT model"
+	@echo "  make benchmark-mobile MODEL=<path>  Run mobile benchmark (issue #8 targets)"
+	@echo "  make profile-mobile MODEL=<path>  Profile mobile model (RAM/latency/energy)"
 	@echo "  make analyze-errors   Run error analysis on predictions"
 	@echo ""
 	@echo "Quantization:"
@@ -43,6 +48,8 @@ help:
 	@echo "  make slurm-train-l4               Submit L4 training job"
 	@echo "  make slurm-train-mobile           Submit Gemma 3 1B mobile fine-tune (L4)"
 	@echo "  make slurm-eval CHECKPOINT=<path> Submit evaluation job"
+	@echo "  make slurm-benchmark-mobile MODEL_PATH=<path>  Submit mobile benchmark job"
+	@echo "  make slurm-evaluate-mobile MODEL_PATH=<path>   Submit mobile eval job"
 	@echo ""
 	@echo "Development:"
 	@echo "  make test             Run test suite"
@@ -154,6 +161,24 @@ evaluate:
 	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make evaluate CHECKPOINT=experiments/run-1/checkpoints/step-5000"; exit 1; fi
 	python -m evaluation.metrics.evaluate --checkpoint $(CHECKPOINT) --test-set data/processed/eval.jsonl
 
+## Evaluate mobile LiteRT-LM model accuracy
+evaluate-mobile:
+	@if [ -z "$(MODEL)" ]; then echo "Error: MODEL required. Use: make evaluate-mobile MODEL=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"; exit 1; fi
+	python -m evaluation.metrics.evaluate_mobile --model $(MODEL) --test-set $(or $(TEST_SET),data/processed/eval.jsonl)
+
+## Run mobile benchmark with issue #8 targets (accuracy + performance)
+benchmark-mobile:
+	@if [ -z "$(MODEL)" ]; then echo "Error: MODEL required. Use: make benchmark-mobile MODEL=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"; exit 1; fi
+	python -m evaluation.benchmark_mobile --model $(MODEL) --test-set $(or $(TEST_SET),data/processed/eval.jsonl) $(if $(SAVE_BASELINE),--save-baseline,)
+
+## Profile mobile model RAM, latency, and energy (always checks issue #8 targets)
+profile-mobile:
+	@if [ -z "$(MODEL)" ]; then echo "Error: MODEL required. Use: make profile-mobile MODEL=models/mobile-standard/horizon-mobile-int8_q8_ekv1280.litertlm"; exit 1; fi
+	python -m evaluation.profile_mobile --model $(MODEL) --runs $(or $(RUNS),10) --check-targets
+
+## Alias for profile-mobile (kept for interface compatibility; --check-targets is always on)
+profile-mobile-check: profile-mobile
+
 analyze-errors:
 	python -m evaluation.analysis.error_analysis --predictions evaluation/reports/latest/predictions.jsonl
 
@@ -209,6 +234,14 @@ slurm-train-mobile:
 slurm-eval:
 	@if [ -z "$(CHECKPOINT)" ]; then echo "Error: CHECKPOINT required. Use: make slurm-eval CHECKPOINT=experiments/run-xxx/checkpoints/step-5000"; exit 1; fi
 	sbatch slurm/evaluate.sbatch --export=CHECKPOINT=$(CHECKPOINT)
+
+slurm-benchmark-mobile:
+	@if [ -z "$(MODEL_PATH)" ]; then echo "Error: MODEL_PATH required."; exit 1; fi
+	sbatch --export=MODEL_PATH=$(MODEL_PATH)$(if $(SAVE_BASELINE),$(comma)SAVE_BASELINE=1,) slurm/benchmark_mobile.sbatch
+
+slurm-evaluate-mobile:
+	@if [ -z "$(MODEL_PATH)" ]; then echo "Error: MODEL_PATH required."; exit 1; fi
+	sbatch --export=MODEL_PATH=$(MODEL_PATH) slurm/evaluate_mobile.sbatch
 
 # Docker (future)
 docker-build:

@@ -1,8 +1,12 @@
 """Threats/violence category prompt."""
 
 import json
+
 from data.generation.prompts.base import (
-    ConversationPrompt, Language, format_system_prompt, make_persona_seed,
+    ConversationPrompt,
+    Language,
+    format_system_prompt,
+    make_persona_seed,
 )
 from data.generation.validators.schemas import RiskCategory, RiskLevel
 
@@ -13,31 +17,59 @@ _SEVERITY_LABEL = {
     RiskLevel.CRITICAL: ("extreme", "extremo"),
 }
 
-_FEW_SHOT_EN = json.dumps({"messages": [
-    {"role": "received", "content": "you better watch yourself after school"},
-    {"role": "sent", "content": "what did i do?"},
-    {"role": "received", "content": "you know what you did. don't play dumb"},
-    {"role": "sent", "content": "i'm serious i don't know what you're talking about"},
-    {"role": "received", "content": "ask your friends. they'll tell you what happens next"},
-    {"role": "sent", "content": "please just leave me alone"},
-    {"role": "received", "content": "too late for that"},
-], "reasoning": "Moderate threat: implied physical threat after school, intimidation, refusal to stop."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_EN = json.dumps(
+    {
+        "messages": [
+            {"role": "received", "content": "you better watch yourself after school"},
+            {"role": "sent", "content": "what did i do?"},
+            {"role": "received", "content": "you know what you did. don't play dumb"},
+            {
+                "role": "sent",
+                "content": "i'm serious i don't know what you're talking about",
+            },
+            {
+                "role": "received",
+                "content": "ask your friends. they'll tell you what happens next",
+            },
+            {"role": "sent", "content": "please just leave me alone"},
+            {"role": "received", "content": "too late for that"},
+        ],
+        "reasoning": "Moderate threat: implied physical threat after school, intimidation, refusal to stop.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
-_FEW_SHOT_ES = json.dumps({"messages": [
-    {"role": "received", "content": "más te vale vigilarte a la salida del insti"},
-    {"role": "sent", "content": "¿qué te hice?"},
-    {"role": "received", "content": "ya sabes lo que hiciste. no te hagas el tonto"},
-    {"role": "sent", "content": "en serio que no sé de qué hablas"},
-    {"role": "received", "content": "pregúntale a tus amigos. te dirán lo que viene después"},
-    {"role": "sent", "content": "por favor déjame en paz"},
-    {"role": "received", "content": "ya es demasiado tarde para eso"},
-], "reasoning": "Amenaza moderada: amenaza física implícita a la salida del instituto, intimidación."
-}, indent=None, separators=(",", ":"))
+_FEW_SHOT_ES = json.dumps(
+    {
+        "messages": [
+            {
+                "role": "received",
+                "content": "más te vale vigilarte a la salida del insti",
+            },
+            {"role": "sent", "content": "¿qué te hice?"},
+            {
+                "role": "received",
+                "content": "ya sabes lo que hiciste. no te hagas el tonto",
+            },
+            {"role": "sent", "content": "en serio que no sé de qué hablas"},
+            {
+                "role": "received",
+                "content": "pregúntale a tus amigos. te dirán lo que viene después",
+            },
+            {"role": "sent", "content": "por favor déjame en paz"},
+            {"role": "received", "content": "ya es demasiado tarde para eso"},
+        ],
+        "reasoning": "Amenaza moderada: amenaza física implícita a la salida del instituto, intimidación.",
+    },
+    indent=None,
+    separators=(",", ":"),
+)
 
 
-def create_threats_prompt(severity: RiskLevel, child_age: int, num_messages: int,
-                          language: Language = "en") -> ConversationPrompt:
+def create_threats_prompt(
+    severity: RiskLevel, child_age: int, num_messages: int, language: Language = "en"
+) -> ConversationPrompt:
     label_en, label_es = _SEVERITY_LABEL.get(severity, ("moderate", "moderado"))
     if language == "es":
         persona = make_persona_seed("es")
@@ -66,5 +98,9 @@ def create_threats_prompt(severity: RiskLevel, child_age: int, num_messages: int
         severity=severity,
         system_prompt=format_system_prompt(language),
         user_prompt=user_prompt,
-        metadata={"child_age": child_age, "num_messages": num_messages, "language": language},
+        metadata={
+            "child_age": child_age,
+            "num_messages": num_messages,
+            "language": language,
+        },
     )

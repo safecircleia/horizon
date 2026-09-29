@@ -47,6 +47,7 @@ QUANT_MAP = {
 
 # ── Step 1: merge LoRA ────────────────────────────────────────────────────────
 
+
 def merge_lora(checkpoint_path: str, output_dir: str) -> None:
     print(f"Loading LoRA checkpoint: {checkpoint_path}")
     config = PeftConfig.from_pretrained(checkpoint_path)
@@ -69,6 +70,7 @@ def merge_lora(checkpoint_path: str, output_dir: str) -> None:
 
 # ── Step 2+3+4: convert via litert-torch ──────────────────────────────────────
 
+
 def convert_and_package(
     merged_dir: str,
     output_dir: str,
@@ -80,9 +82,9 @@ def convert_and_package(
 ) -> str:
     try:
         from litert_torch.generative.examples.gemma3 import decoder as gemma3_decoder
+        from litert_torch.generative.layers import kv_cache as kv_utils
         from litert_torch.generative.utilities import converter
         from litert_torch.generative.utilities.export_config import ExportConfig
-        from litert_torch.generative.layers import kv_cache as kv_utils
     except ImportError as e:
         print(f"ERROR: litert-torch import failed: {e}")
         print("Install with: uv pip install tensorflow litert-torch litert-lm-builder")
@@ -103,7 +105,9 @@ def convert_and_package(
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    print(f"Converting to LiteRT-LM ({quantization.upper()}, kv={kv_cache_max_len}, prefill={prefill_seq_lens})...")
+    print(
+        f"Converting to LiteRT-LM ({quantization.upper()}, kv={kv_cache_max_len}, prefill={prefill_seq_lens})..."
+    )
     converter.convert_to_litert(
         pytorch_model=pytorch_model,
         output_path=str(output_dir_path),
@@ -144,41 +148,53 @@ def convert_and_package(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Export fine-tuned Gemma 3 1B LoRA to a LiteRT-LM .litertlm container"
     )
     parser.add_argument(
-        "--checkpoint", required=True,
-        help="Fine-tuned LoRA checkpoint (e.g. experiments/mobile-<ts>/final)"
+        "--checkpoint",
+        required=True,
+        help="Fine-tuned LoRA checkpoint (e.g. experiments/mobile-<ts>/final)",
     )
     parser.add_argument(
-        "--output", default="models/mobile-standard",
-        help="Output directory (default: models/mobile-standard)"
+        "--output",
+        default="models/mobile-standard",
+        help="Output directory (default: models/mobile-standard)",
     )
     parser.add_argument(
-        "--quantization", default="int8", choices=list(QUANT_MAP.keys()),
-        help="int8 (~1.2GB, 6GB+ phones) or int4 (~0.7GB, 4GB phones) (default: int8)"
+        "--quantization",
+        default="int8",
+        choices=list(QUANT_MAP.keys()),
+        help="int8 (~1.2GB, 6GB+ phones) or int4 (~0.7GB, 4GB phones) (default: int8)",
     )
     parser.add_argument(
-        "--kv-cache-max-len", type=int, default=1280,
-        help="KV cache size — max tokens (prefill + decode). Default: 1280"
+        "--kv-cache-max-len",
+        type=int,
+        default=1280,
+        help="KV cache size — max tokens (prefill + decode). Default: 1280",
     )
     parser.add_argument(
-        "--prefill-seq-lens", type=int, nargs="+", default=[8, 64, 128, 256, 512],
-        help="Prefill sequence lengths exported as separate signatures"
+        "--prefill-seq-lens",
+        type=int,
+        nargs="+",
+        default=[8, 64, 128, 256, 512],
+        help="Prefill sequence lengths exported as separate signatures",
     )
     parser.add_argument(
-        "--version", default="1.0.0",
-        help="Version string embedded in the container (default: 1.0.0)"
+        "--version",
+        default="1.0.0",
+        help="Version string embedded in the container (default: 1.0.0)",
     )
     parser.add_argument(
-        "--skip-merge", action="store_true",
-        help="Skip LoRA merge — reuse an existing merged directory"
+        "--skip-merge",
+        action="store_true",
+        help="Skip LoRA merge — reuse an existing merged directory",
     )
     parser.add_argument(
         "--merged-dir",
-        help="Path to existing merged checkpoint (used with --skip-merge)"
+        help="Path to existing merged checkpoint (used with --skip-merge)",
     )
     args = parser.parse_args()
 
@@ -204,7 +220,7 @@ def main() -> None:
     print(f"  Variant         : {variant}")
     print(f"  Merged checkpoint: {merged_dir}")
     print(f"  Output           : {out}")
-    print(f"\nTest locally:")
+    print("\nTest locally:")
     print(f"  uvx litert-lm run {out} --prompt 'Hello'")
 
 

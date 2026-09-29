@@ -1,10 +1,10 @@
 """Amazon Bedrock conversation generator using long-term API keys."""
 
 import os
-import json
-from typing import Optional
 from urllib.parse import quote
+
 import httpx
+
 from data.generation.generators.base import ConversationGenerator, GenerationResult
 from data.generation.prompts.base import ConversationPrompt
 
@@ -14,7 +14,7 @@ class BedrockGenerator(ConversationGenerator):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "eu.amazon.nova-micro-v1:0",
         region: str = "eu-west-3",
         temperature: float = 0.9,

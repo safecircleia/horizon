@@ -2,18 +2,21 @@
 Clustering analysis example with multiple algorithms, evaluation, and visualization.
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
-from sklearn.mixture import GaussianMixture
-from sklearn.metrics import (
-    silhouette_score, calinski_harabasz_score, davies_bouldin_score
-)
 import warnings
-warnings.filterwarnings('ignore')
+
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import (
+    calinski_harabasz_score,
+    davies_bouldin_score,
+    silhouette_score,
+)
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
+
+warnings.filterwarnings("ignore")
 
 
 def preprocess_for_clustering(X, scale=True, pca_components=None):
@@ -43,7 +46,9 @@ def preprocess_for_clustering(X, scale=True, pca_components=None):
     if pca_components is not None:
         pca = PCA(n_components=pca_components)
         X_processed = pca.fit_transform(X_processed)
-        print(f"PCA: Explained variance ratio = {pca.explained_variance_ratio_.sum():.3f}")
+        print(
+            f"PCA: Explained variance ratio = {pca.explained_variance_ratio_.sum():.3f}"
+        )
 
     return X_processed
 
@@ -78,21 +83,21 @@ def find_optimal_k_kmeans(X, k_range=range(2, 11)):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
 
     # Elbow plot
-    ax1.plot(k_range, inertias, 'bo-')
-    ax1.set_xlabel('Number of clusters (K)')
-    ax1.set_ylabel('Inertia')
-    ax1.set_title('Elbow Method')
+    ax1.plot(k_range, inertias, "bo-")
+    ax1.set_xlabel("Number of clusters (K)")
+    ax1.set_ylabel("Inertia")
+    ax1.set_title("Elbow Method")
     ax1.grid(True)
 
     # Silhouette plot
-    ax2.plot(k_range, silhouette_scores, 'ro-')
-    ax2.set_xlabel('Number of clusters (K)')
-    ax2.set_ylabel('Silhouette Score')
-    ax2.set_title('Silhouette Analysis')
+    ax2.plot(k_range, silhouette_scores, "ro-")
+    ax2.set_xlabel("Number of clusters (K)")
+    ax2.set_ylabel("Silhouette Score")
+    ax2.set_title("Silhouette Analysis")
     ax2.grid(True)
 
     plt.tight_layout()
-    plt.savefig('clustering_optimization.png', dpi=300, bbox_inches='tight')
+    plt.savefig("clustering_optimization.png", dpi=300, bbox_inches="tight")
     print("Saved: clustering_optimization.png")
     plt.close()
 
@@ -101,10 +106,10 @@ def find_optimal_k_kmeans(X, k_range=range(2, 11)):
     print(f"\nRecommended K based on silhouette score: {best_k}")
 
     return {
-        'k_values': list(k_range),
-        'inertias': inertias,
-        'silhouette_scores': silhouette_scores,
-        'best_k': best_k
+        "k_values": list(k_range),
+        "inertias": inertias,
+        "silhouette_scores": silhouette_scores,
+        "best_k": best_k,
     }
 
 
@@ -124,14 +129,14 @@ def compare_clustering_algorithms(X, n_clusters=3):
     dict
         Dictionary with results for each algorithm
     """
-    print("="*60)
+    print("=" * 60)
     print(f"Comparing Clustering Algorithms (n_clusters={n_clusters})")
-    print("="*60)
+    print("=" * 60)
 
     algorithms = {
-        'K-Means': KMeans(n_clusters=n_clusters, random_state=42, n_init=10),
-        'Agglomerative': AgglomerativeClustering(n_clusters=n_clusters, linkage='ward'),
-        'Gaussian Mixture': GaussianMixture(n_components=n_clusters, random_state=42)
+        "K-Means": KMeans(n_clusters=n_clusters, random_state=42, n_init=10),
+        "Agglomerative": AgglomerativeClustering(n_clusters=n_clusters, linkage="ward"),
+        "Gaussian Mixture": GaussianMixture(n_components=n_clusters, random_state=42),
     }
 
     # DBSCAN doesn't require n_clusters
@@ -150,11 +155,11 @@ def compare_clustering_algorithms(X, n_clusters=3):
         davies = davies_bouldin_score(X, labels)
 
         results[name] = {
-            'labels': labels,
-            'n_clusters': n_clusters,
-            'silhouette': silhouette,
-            'calinski_harabasz': calinski,
-            'davies_bouldin': davies
+            "labels": labels,
+            "n_clusters": n_clusters,
+            "silhouette": silhouette,
+            "calinski_harabasz": calinski,
+            "davies_bouldin": davies,
         }
 
         print(f"\n{name}:")
@@ -174,23 +179,23 @@ def compare_clustering_algorithms(X, n_clusters=3):
             calinski = calinski_harabasz_score(X[mask], dbscan_labels[mask])
             davies = davies_bouldin_score(X[mask], dbscan_labels[mask])
 
-            results['DBSCAN'] = {
-                'labels': dbscan_labels,
-                'n_clusters': n_clusters_dbscan,
-                'n_noise': n_noise,
-                'silhouette': silhouette,
-                'calinski_harabasz': calinski,
-                'davies_bouldin': davies
+            results["DBSCAN"] = {
+                "labels": dbscan_labels,
+                "n_clusters": n_clusters_dbscan,
+                "n_noise": n_noise,
+                "silhouette": silhouette,
+                "calinski_harabasz": calinski,
+                "davies_bouldin": davies,
             }
 
-            print(f"\nDBSCAN:")
+            print("\nDBSCAN:")
             print(f"  Clusters found:         {n_clusters_dbscan}")
             print(f"  Noise points:           {n_noise}")
             print(f"  Silhouette Score:       {silhouette:.4f} (higher is better)")
             print(f"  Calinski-Harabasz:      {calinski:.4f} (higher is better)")
             print(f"  Davies-Bouldin:         {davies:.4f} (lower is better)")
     else:
-        print(f"\nDBSCAN:")
+        print("\nDBSCAN:")
         print(f"  Clusters found:         {n_clusters_dbscan}")
         print(f"  Noise points:           {n_noise}")
         print("  Note: Insufficient clusters for metric calculation")
@@ -223,7 +228,7 @@ def visualize_clusters(X, results, true_labels=None):
     n_cols = min(3, n_plots)
     n_rows = (n_plots + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
     if n_plots == 1:
         axes = np.array([axes])
     axes = axes.flatten()
@@ -233,49 +238,61 @@ def visualize_clusters(X, results, true_labels=None):
     # Plot true labels if available
     if true_labels is not None:
         ax = axes[plot_idx]
-        scatter = ax.scatter(X_2d[:, 0], X_2d[:, 1], c=true_labels, cmap='viridis', alpha=0.6)
-        ax.set_title('True Labels')
-        ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-        ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+        scatter = ax.scatter(
+            X_2d[:, 0], X_2d[:, 1], c=true_labels, cmap="viridis", alpha=0.6
+        )
+        ax.set_title("True Labels")
+        ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%})")
+        ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%})")
         plt.colorbar(scatter, ax=ax)
         plot_idx += 1
 
     # Plot clustering results
     for name, result in results.items():
         ax = axes[plot_idx]
-        labels = result['labels']
+        labels = result["labels"]
 
-        scatter = ax.scatter(X_2d[:, 0], X_2d[:, 1], c=labels, cmap='viridis', alpha=0.6)
+        scatter = ax.scatter(
+            X_2d[:, 0], X_2d[:, 1], c=labels, cmap="viridis", alpha=0.6
+        )
 
         # Highlight noise points for DBSCAN
-        if name == 'DBSCAN' and -1 in labels:
+        if name == "DBSCAN" and -1 in labels:
             noise_mask = labels == -1
-            ax.scatter(X_2d[noise_mask, 0], X_2d[noise_mask, 1],
-                      c='red', marker='x', s=100, label='Noise', alpha=0.8)
+            ax.scatter(
+                X_2d[noise_mask, 0],
+                X_2d[noise_mask, 1],
+                c="red",
+                marker="x",
+                s=100,
+                label="Noise",
+                alpha=0.8,
+            )
             ax.legend()
 
         title = f"{name} (K={result['n_clusters']})"
-        if 'silhouette' in result:
+        if "silhouette" in result:
             title += f"\nSilhouette: {result['silhouette']:.3f}"
         ax.set_title(title)
-        ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.2%})')
-        ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.2%})')
+        ax.set_xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%})")
+        ax.set_ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%})")
         plt.colorbar(scatter, ax=ax)
 
         plot_idx += 1
 
     # Hide unused subplots
     for idx in range(plot_idx, len(axes)):
-        axes[idx].axis('off')
+        axes[idx].axis("off")
 
     plt.tight_layout()
-    plt.savefig('clustering_results.png', dpi=300, bbox_inches='tight')
+    plt.savefig("clustering_results.png", dpi=300, bbox_inches="tight")
     print("\nSaved: clustering_results.png")
     plt.close()
 
 
-def complete_clustering_analysis(X, true_labels=None, scale=True,
-                                 find_k=True, k_range=range(2, 11), n_clusters=3):
+def complete_clustering_analysis(
+    X, true_labels=None, scale=True, find_k=True, k_range=range(2, 11), n_clusters=3
+):
     """
     Complete clustering analysis workflow.
 
@@ -299,9 +316,9 @@ def complete_clustering_analysis(X, true_labels=None, scale=True,
     dict
         Dictionary with all analysis results
     """
-    print("="*60)
+    print("=" * 60)
     print("Clustering Analysis")
-    print("="*60)
+    print("=" * 60)
     print(f"Data shape: {X.shape}")
 
     # Preprocess data
@@ -310,28 +327,30 @@ def complete_clustering_analysis(X, true_labels=None, scale=True,
     # Find optimal K if requested
     optimization_results = None
     if find_k:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Finding Optimal Number of Clusters")
-        print("="*60)
+        print("=" * 60)
         optimization_results = find_optimal_k_kmeans(X_processed, k_range=k_range)
 
         # Use recommended K
         if optimization_results:
-            n_clusters = optimization_results['best_k']
+            n_clusters = optimization_results["best_k"]
 
     # Compare clustering algorithms
-    comparison_results = compare_clustering_algorithms(X_processed, n_clusters=n_clusters)
+    comparison_results = compare_clustering_algorithms(
+        X_processed, n_clusters=n_clusters
+    )
 
     # Visualize results
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Visualizing Results")
-    print("="*60)
+    print("=" * 60)
     visualize_clusters(X_processed, comparison_results, true_labels=true_labels)
 
     return {
-        'X_processed': X_processed,
-        'optimization': optimization_results,
-        'comparison': comparison_results
+        "X_processed": X_processed,
+        "optimization": optimization_results,
+        "comparison": comparison_results,
     }
 
 
@@ -339,9 +358,9 @@ def complete_clustering_analysis(X, true_labels=None, scale=True,
 if __name__ == "__main__":
     from sklearn.datasets import load_iris, make_blobs
 
-    print("="*60)
+    print("=" * 60)
     print("Example 1: Iris Dataset")
-    print("="*60)
+    print("=" * 60)
 
     # Load Iris dataset
     iris = load_iris()
@@ -354,17 +373,16 @@ if __name__ == "__main__":
         scale=True,
         find_k=True,
         k_range=range(2, 8),
-        n_clusters=3
+        n_clusters=3,
     )
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Example 2: Synthetic Dataset with Noise")
-    print("="*60)
+    print("=" * 60)
 
     # Create synthetic dataset
     X_synth, y_synth = make_blobs(
-        n_samples=500, n_features=2, centers=4,
-        cluster_std=0.5, random_state=42
+        n_samples=500, n_features=2, centers=4, cluster_std=0.5, random_state=42
     )
 
     # Add noise points
@@ -378,9 +396,9 @@ if __name__ == "__main__":
         scale=True,
         find_k=True,
         k_range=range(2, 8),
-        n_clusters=4
+        n_clusters=4,
     )
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Analysis Complete!")
-    print("="*60)
+    print("=" * 60)
