@@ -6,6 +6,13 @@
       "sourceType": "autoskills-registry",
       "computedHash": "bffe3d08cfe92ebad63699f74ce29e35c19850ebfbf474c1463183cfe34d6a09"
     },
+    "awesome-jev": {
+      "source": "logicrw.github.io",
+      "sourceUrl": "https://logicrw.github.io/awesome-jev-projects/",
+      "sourceType": "well-known",
+      "computedHash": "c74bcfd4b5dec833b7e056195f0ab166182b3c0066f0e8eeccde1357bd782540",
+      "wellKnownDigest": "sha256:24c32a3be86944fa3c126e187e3a0f221d9f514d16a6e69ce3b4fd6e218dad12"
+    },
     "bash-defensive-patterns": {
       "source": "wshobson/agents",
       "sourceType": "autoskills-registry",
