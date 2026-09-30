@@ -91,6 +91,17 @@ def main():
     print("Loading model and tokenizer...")
     model, tokenizer = load_model_and_tokenizer(config)
 
+    # Continued fine-tune: start from an existing LoRA adapter's weights.
+    init_adapter = config["model"].get("init_adapter")
+    if init_adapter:
+        from peft import set_peft_model_state_dict
+        from safetensors.torch import load_file
+
+        set_peft_model_state_dict(
+            model, load_file(f"{init_adapter}/adapter_model.safetensors")
+        )
+        print(f"Initialised LoRA weights from {init_adapter}")
+
     max_seq = data_cfg.get("max_seq_length", 2048)
     print(f"Loading datasets (max_seq={max_seq})...")
     train_dataset = _load_jsonl_dataset(data_cfg["train_file"])

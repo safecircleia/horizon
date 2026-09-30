@@ -99,7 +99,7 @@ SYNC_PID=$!
 
 echo "=== Starting mobile fine-tune (Job $SLURM_JOB_ID) ==="
 python -m training.scripts.train \
-    --config training/configs/mobile.yaml \
+    --config "${CONFIG:-training/configs/mobile.yaml}" \
     $RESUME_FLAG \
     2>&1 | tee "$OUTDIR/training.log"
 
