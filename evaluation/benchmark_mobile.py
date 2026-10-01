@@ -587,9 +587,7 @@ def main() -> None:
         f"  Precision:               {a['precision']:.2%}  (target: >= {TARGETS['precision']:.0%})"
     )
     print(f"  F1:                      {a['f1']:.4f}  (target: >= {TARGETS['f1']})")
-    print(
-        f"  Rule catch rate:         {a['rule_catch_rate']:.2%}  (informational)"
-    )
+    print(f"  Rule catch rate:         {a['rule_catch_rate']:.2%}  (informational)")
 
     if a.get("per_category_recall"):
         print("\n  Per-category recall:")
